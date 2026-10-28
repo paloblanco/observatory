@@ -50,89 +50,129 @@ add('glass', tile((r, c) => (r === 0 || c === 0 ? 7 : r === c ? 7 : 12), (r, c) 
 add('flowers', tile((r, c) => ((r * 5 + c * 3) % 11 === 0 ? pick([14, 8, 10, 7]) : pick([3, 11, 27, 27])), (r) => (r < 2 ? 27 : 4), dirt));
 add('moon', tile((r, c) => ((r - 2) ** 2 + (c - 5) ** 2 < 3 || (r - 6) ** 2 + (c - 2) ** 2 < 2 ? 22 : pick([7, 15, 15, 6])), () => pick([15, 6, 22, 15])));
 
-// ------------------------------------------------------------------ the map, 64 x 64 x 64
-const W = 64, H = 64, D = 64;
+add('cap', tile((r, c) => ((r * 3 + c * 5) % 7 === 1 ? 7 : 8), (r, c) => (r < 3 ? ((c * 3 + r) % 5 === 0 ? 7 : 8) : 24), () => 15));
+add('stem', tile(() => pick([7, 15, 15]), (r, c) => (c % 3 === 1 ? 15 : 7)));
+add('hedge', tile(() => pick([3, 3, 27, 19]), (r, c) => ((r + c) % 3 === 0 ? 19 : pick([3, 27]))));
+
+// ------------------------------------------------------------------ the map, 128 x 64 x 128
+const W = 128, H = 64, D = 128;
 const map = new Uint8Array(W * H * D);
 const set = (x, y, z, t) => { if (x >= 0 && x < W && y >= 0 && y < H && z >= 0 && z < D) map[x + W * (y + H * z)] = t; };
 const get = (x, y, z) => (x >= 0 && x < W && y >= 0 && y < H && z >= 0 && z < D ? map[x + W * (y + H * z)] : 0);
-const TOP = 10;                       // the island's top layer; you walk at y = 11
-const CX = 31.5, CZ = 35.5;           // the middle of the island (and the Star Well)
+const TOP = 16;                       // the main island's top layer; you walk at y = 17
+const CX = 63.5, CZ = 63.5;           // the middle of the main island (and the Star Well)
+const MAIN = 34;                      // the main island's radius
 const rad = (x, z, cx = CX, cz = CZ) => Math.hypot(x + 0.5 - cx, z + 0.5 - cz);
 const noise2 = (x, z) => Math.sin(x * 0.7 + z * 0.3) + Math.sin(z * 0.9 - x * 0.4) * 0.7;
 
-// a floating island: grass on top, dirt under it, a rocky cone tapering down
-function island(cx, cz, r, top, depth) {
-  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-    const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz), edge = r + noise2(x, z) * 0.6;
-    if (d > edge) continue;
+// calls fn(x, z, distance) for every column within r of (cx, cz)
+function each(cx, cz, r, fn) {
+  for (let z = Math.max(0, Math.floor(cz - r - 1)); z <= Math.min(D - 1, Math.ceil(cz + r + 1)); z++)
+    for (let x = Math.max(0, Math.floor(cx - r - 1)); x <= Math.min(W - 1, Math.ceil(cx + r + 1)); x++) {
+      const d = rad(x, z, cx, cz);
+      if (d < r) fn(x, z, d);
+    }
+}
+
+// a floating island: a top layer, dirt under it, a rocky cone tapering down
+function island(cx, cz, r, top, depth = r * 0.45, topTile = T.grass) {
+  each(cx, cz, r + 1, (x, z, d) => {
+    const edge = r + noise2(x, z) * 0.6;
+    if (d > edge) return;
     const under = Math.max(1, Math.floor((edge - d) / edge * depth + noise2(z, x) * 1.2));
-    for (let y = top - under; y < top; y++) set(x, y, z, y >= top - 2 ? T.dirt : T.rock);
-    set(x, top, z, T.grass);
+    for (let y = top - under; y < top; y++) set(x, y, z, topTile === T.grass && y >= top - 2 ? T.dirt : T.rock);
+    set(x, top, z, topTile);
+  });
+}
+
+// a 3-wide plank bridge from (x0, z0) to (x1, z1) at height y, with rail posts where it's over the void
+function bridge(x0, z0, x1, z1, y) {
+  const len = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(len * 3);
+  const sx = -(z1 - z0) / len, sz = (x1 - x0) / len;
+  const deck = new Set(), posts = [];
+  for (let i = 0; i <= n; i++) {
+    const x = x0 + (x1 - x0) * i / n, z = z0 + (z1 - z0) * i / n;
+    for (let s = -1.4; s <= 1.41; s += 0.35) {
+      const bx = Math.floor(x + sx * s), bz = Math.floor(z + sz * s);
+      set(bx, y, bz, T.planks); deck.add(bx + ',' + bz);
+    }
+    if (i % 9 === 0) for (const s of [-2.1, 2.1]) posts.push([Math.floor(x + sx * s), Math.floor(z + sz * s)]);
+  }
+  for (const [x, z] of posts) if (!deck.has(x + ',' + z) && !get(x, y, z)) { set(x, y, z, T.planks); set(x, y + 1, z, T.planks); }
+}
+
+// floating 2x2 stepping stones from the edge of one platform to the edge of another.
+// Each stone is at most 1 block higher than the last and close enough to jump to.
+function stones(c1, r1, y1, c2, r2, y2) {
+  const dx = c2[0] - c1[0], dz = c2[1] - c1[1], len = Math.hypot(dx, dz), ux = dx / len, uz = dz / len;
+  const a = [c1[0] + ux * (r1 - 0.5), c1[1] + uz * (r1 - 0.5)], b = [c2[0] - ux * (r2 - 0.5), c2[1] - uz * (r2 - 0.5)];
+  const h = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(Math.ceil(h / 3.2), Math.abs(y2 - y1));
+  for (let i = 1; i <= n; i++) {
+    const t = i / (n + 1), x = Math.round(a[0] + (b[0] - a[0]) * t - 1), z = Math.round(a[1] + (b[1] - a[1]) * t - 1);
+    const y = y1 + Math.round((y2 - y1) * t);
+    for (let ez = 0; ez < 2; ez++) for (let ex = 0; ex < 2; ex++) { set(x + ex, y, z + ez, T.moon); set(x + ex, y - 1, z + ez, T.rock); }
   }
 }
 
-island(CX, CZ, 25, TOP, 10);          // the observatory island
-island(31.5, 4.5, 4.2, TOP, 5);       // the landing islet to the south, where Lumi starts
+function tree(x, z, h, top = TOP) {
+  for (let y = top + 1; y < top + 1 + h; y++) set(x, y, z, T.trunk);
+  const cy = top + h;
+  for (let dz = -3; dz <= 3; dz++) for (let dy = -2; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
+    if (Math.hypot(dx, dy * 1.2, dz) < 2.9 + R() * 0.4 && !get(x + dx, cy + dy, z + dz)) set(x + dx, cy + dy, z + dz, T.leaves);
+  }
+}
+function lamp(x, z, top) { for (let y = top + 1; y <= top + 3; y++) set(x, y, z, T.metal); set(x, top + 4, z, T.lamp); }
 
-// paths: a ring, four spokes, and the south spoke runs on over the bridge
-for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-  const r = rad(x, z);
-  const ring = r >= 12 && r < 14.2;
-  const spoke = r < 24 && (Math.abs(x + 0.5 - CX) < 1.6 || Math.abs(z + 0.5 - CZ) < 1.6);
+// ---------------- the main island
+island(CX, CZ, MAIN, TOP);
+
+// paths: a ring and four spokes
+each(CX, CZ, MAIN + 1, (x, z, r) => {
+  const ring = r >= 16 && r < 18.6;
+  const spoke = r < MAIN - 1 && (Math.abs(x + 0.5 - CX) < 1.6 || Math.abs(z + 0.5 - CZ) < 1.6);
   if ((ring || spoke) && get(x, TOP, z) === T.grass) set(x, TOP, z, T.path);
   if (get(x, TOP, z) === T.grass && R() < 0.06) set(x, TOP, z, T.flowers);
-}
-// the bridge from the islet to the island, with rail posts
-for (let z = 7; z <= 12; z++) for (let x = 30; x <= 32; x++) {
-  set(x, TOP, z, T.planks);
-  if ((x === 30 || x === 32) && z % 2 === 1) set(x, TOP + 1, z, T.planks);
-}
-// a star pad where Lumi lands
-for (let z = 2; z <= 6; z++) for (let x = 29; x <= 33; x++) if (rad(x, z, 31.5, 4.5) < 2.6) set(x, TOP, z, T.startile);
+});
 
 // the central plaza and the Star Well
-for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-  const r = rad(x, z);
-  if (r < 7) set(x, TOP, z, T.marble);
-  if (r < 5) set(x, TOP + 1, z, r < 3.6 ? T.startile : T.marble);   // the dais, one step up
-  if (r < 2.1) { set(x, TOP + 1, z, 0); set(x, TOP, z, T.gold); }   // the well's golden basin
-}
+each(CX, CZ, 9, (x, z, r) => {
+  set(x, TOP, z, T.marble);
+  if (r < 6) set(x, TOP + 1, z, r < 4.5 ? T.startile : T.marble);   // the dais, one step up
+  if (r < 2.5) { set(x, TOP + 1, z, 0); set(x, TOP, z, T.gold); }   // the well's golden basin
+});
 
 // lamp posts around the ring
-for (let i = 0; i < 12; i++) {
-  const a = (i + 0.5) / 12 * Math.PI * 2;
-  const x = Math.floor(CX + Math.sin(a) * 15), z = Math.floor(CZ + Math.cos(a) * 15);
-  for (let y = TOP + 1; y <= TOP + 3; y++) set(x, y, z, T.metal);
-  set(x, TOP + 4, z, T.lamp);
+for (let i = 0; i < 16; i++) {
+  const a = (i + 0.5) / 16 * Math.PI * 2;
+  lamp(Math.floor(CX + Math.sin(a) * 20.5), Math.floor(CZ + Math.cos(a) * 20.5), TOP);
 }
 
 // north: the telescope tower, with a stair spiralling up the outside
-const TX = 31.5, TZ = 51.5, TOWER = 4.5, STAIR = 7, STEPS = 16, DECK = TOP + 1 + STEPS;
-for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-  const r = rad(x, z, TX, TZ);
+const TX = 63.5, TZ = 87.5, TOWER = 5.5, STAIR = 9, STEPS = 20, DECK = TOP + 1 + STEPS;
+each(TX, TZ, STAIR, (x, z, r) => {
   if (r < TOWER) {
     for (let y = TOP + 1; y < DECK; y++) set(x, y, z, (y - TOP) % 5 === 0 && r > TOWER - 1 ? T.glass : T.brick);
     set(x, DECK, z, r > TOWER - 1 ? T.marble : T.planks);
-  } else if (r < STAIR) {
+  } else {
     // angle 0 points south (toward the plaza) and climbs counter-clockwise seen from above
     const a = ((Math.atan2(-(x + 0.5 - TX), -(z + 0.5 - TZ)) / (Math.PI * 2)) + 1) % 1;
     const h = TOP + 1 + Math.floor(a * STEPS);
     for (let y = TOP + 1; y <= h; y++) set(x, y, z, y === h ? T.marble : T.brick);
   }
-}
+});
 // the telescope on the deck, a brass tube tilted at the sky
-for (let i = 0; i < 8; i++) {
-  const y = DECK + 1 + Math.floor(i * 0.8), z = Math.floor(TZ - 1 + i * 0.6);
-  for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++) set(31 + dx, y + dy, z, i === 7 ? T.glass : T.brass);
+for (let i = 0; i < 10; i++) {
+  const y = DECK + 1 + Math.floor(i * 0.8), z = Math.floor(TZ - 2 + i * 0.6);
+  for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++) set(63 + dx, y + dy, z, i === 9 ? T.glass : T.brass);
 }
-set(31, DECK + 1, 50, T.metal); set(32, DECK + 1, 50, T.metal);   // its stand
+set(63, DECK + 1, TZ - 2.5, T.metal); set(64, DECK + 1, TZ - 2.5, T.metal);   // its stand
 
 // east: the star library, a little house with a door facing the plaza
-const LX0 = 44, LX1 = 54, LZ0 = 30, LZ1 = 41;
+const LX0 = 84, LX1 = 95, LZ0 = 57, LZ1 = 70;
 for (let z = LZ0; z <= LZ1; z++) for (let x = LX0; x <= LX1; x++) {
   set(x, TOP, z, T.planks);
   const wall = x === LX0 || x === LX1 || z === LZ0 || z === LZ1;
-  const door = x === LX0 && z >= 35 && z <= 36;
+  const door = x === LX0 && z >= 63 && z <= 64;
   for (let y = TOP + 1; y <= TOP + 4; y++) {
     if (wall && !(door && y <= TOP + 2)) {
       const window = !(x === LX0 || x === LX1) && (x - LX0) % 3 === 2 && (y === TOP + 2 || y === TOP + 3);
@@ -142,48 +182,109 @@ for (let z = LZ0; z <= LZ1; z++) for (let x = LX0; x <= LX1; x++) {
   // bookshelves along the inside of the back walls, a reading table in the middle
   const inner = x === LX1 - 1 || z === LZ0 + 1 || z === LZ1 - 1;
   if (!wall && inner && !(x <= LX0 + 2)) for (let y = TOP + 1; y <= TOP + 2; y++) set(x, y, z, T.books);
-  if (x >= 48 && x <= 49 && z >= 35 && z <= 36) set(x, TOP + 1, z, T.planks);
+  if (x >= 89 && x <= 90 && z >= 63 && z <= 64) set(x, TOP + 1, z, T.planks);
 }
-for (let s = 0; s < 5; s++) for (let z = LZ0 - 1 + s; z <= LZ1 + 1 - s; z++) for (let x = LX0 - 1 + s; x <= LX1 + 1 - s; x++) {
+for (let s = 0; s < 7; s++) for (let z = LZ0 - 1 + s; z <= LZ1 + 1 - s; z++) for (let x = LX0 - 1 + s; x <= LX1 + 1 - s; x++) {
   const edge = x === LX0 - 1 + s || x === LX1 + 1 - s || z === LZ0 - 1 + s || z === LZ1 + 1 - s;
-  if (edge || s === 4) set(x, TOP + 5 + s, z, T.roof);
+  if (edge || s === 6) set(x, TOP + 5 + s, z, T.roof);
 }
-set(Math.floor((LX0 + LX1) / 2), TOP + 10, Math.floor((LZ0 + LZ1) / 2), T.lamp);   // a lantern on the roof
+set(Math.floor((LX0 + LX1) / 2), TOP + 12, Math.floor((LZ0 + LZ1) / 2), T.lamp);   // a lantern on the roof
 
 // west: the garden, a pond and some trees
-const PX = 14.5, PZ = 36.5;
-for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-  const r = rad(x, z, PX, PZ);
-  if (r < 4.6) { set(x, TOP, z, 0); set(x, TOP - 1, z, T.water); }
-  else if (r < 5.4 && get(x, TOP, z)) set(x, TOP, z, T.path);
-}
-for (let x = 13; x <= 15; x++) set(x, TOP, 36, T.planks);   // a little stepping plank across
-function tree(x, z, h) {
-  for (let y = TOP + 1; y < TOP + 1 + h; y++) set(x, y, z, T.trunk);
-  const cy = TOP + h;
-  for (let dz = -3; dz <= 3; dz++) for (let dy = -2; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
-    if (Math.hypot(dx, dy * 1.2, dz) < 2.9 + R() * 0.4 && !get(x + dx, cy + dy, z + dz)) set(x + dx, cy + dy, z + dz, T.leaves);
-  }
-}
-tree(10, 27, 5); tree(19, 45, 4); tree(9, 44, 6); tree(21, 26, 4); tree(45, 21, 5); tree(52, 48, 4);
+const PX = 40.5, PZ = 63.5;
+each(PX, PZ, 7, (x, z, r) => {
+  if (r < 6) { set(x, TOP, z, 0); set(x, TOP - 1, z, T.water); }
+  else if (get(x, TOP, z)) set(x, TOP, z, T.path);
+});
+for (let x = 35; x <= 45; x++) set(x, TOP, 63, T.planks);   // a little plank walk across
+for (const [x, z, h] of [[36, 52, 5], [46, 77, 4], [35, 74, 6], [47, 50, 4], [34, 59, 5], [45, 40, 5], [84, 42, 4], [88, 82, 5], [78, 92, 4], [42, 88, 5]]) tree(x, z, h);
 
-// floating stepping stones from the tower deck up to the moon platform
-const stones = 9, moon = [10.5, DECK + 9, 52.5];
-for (let i = 0; i < stones; i++) {
-  const t = (i + 1) / (stones + 1);
-  const x = Math.round(25 + (moon[0] + 4 - 25) * t + Math.sin(i * 1.7) * 1.5);
-  const z = Math.round(TZ + Math.sin(t * Math.PI) * 6);
-  const y = DECK + Math.round(t * (moon[1] - DECK));
-  for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 2; dx++) { set(x + dx, y, z + dz, T.moon); set(x + dx, y - 1, z + dz, T.rock); }
+// ---------------- south: the landing islet, where Lumi starts, and its bridge
+const LAND = [63.5, 17.5], LAND_R = 6;
+island(LAND[0], LAND[1], LAND_R, TOP, 6);
+each(LAND[0], LAND[1], 3, (x, z) => set(x, TOP, z, T.startile));
+bridge(64, LAND[1] + LAND_R - 1, 64, CZ - MAIN + 1.5, TOP);
+
+// ---------------- northwest, up high: the moon, by stepping stones from the tower deck
+const MOON = [30.5, 104.5], MOON_R = 6, MOON_Y = DECK + 10;
+island(MOON[0], MOON[1], MOON_R, MOON_Y, 4, T.moon);
+stones([TX, TZ], TOWER, DECK, MOON, MOON_R, MOON_Y);
+lamp(30, 104, MOON_Y);
+
+// ---------------- west: the lake island, a little higher, by stepping stones from the garden
+const LAKE = [16.5, 40.5], LAKE_R = 10, LAKE_Y = TOP + 3;
+island(LAKE[0], LAKE[1], LAKE_R, LAKE_Y);
+stones([CX, CZ], MAIN, TOP, LAKE, LAKE_R, LAKE_Y);
+each(14.5, 38.5, 4.5, (x, z) => { set(x, LAKE_Y, z, 0); set(x, LAKE_Y - 1, z, T.water); });
+for (let z = 37; z <= 39; z++) for (let x = 7; x <= 10; x++) set(x, LAKE_Y - 1, z, T.water);   // the lake runs to the edge...
+for (let z = 37; z <= 39; z++) for (let y = LAKE_Y - 10; y < LAKE_Y - 1; y++) set(6, y, z, T.water);  // ...and spills off it
+for (let z = 44; z <= 48; z++) for (let x = 19; x <= 23; x++) {        // a gazebo
+  set(x, LAKE_Y, z, T.marble);
+  if ((x === 19 || x === 23) && (z === 44 || z === 48)) for (let y = LAKE_Y + 1; y <= LAKE_Y + 3; y++) set(x, y, z, T.marble);
+  set(x, LAKE_Y + 4, z, T.roof);
 }
-for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-  const r = rad(x, z, moon[0], moon[2]);
-  if (r < 5.3) {
-    set(x, moon[1], z, T.moon);
-    for (let y = moon[1] - Math.max(1, Math.floor((5.3 - r) * 1.2)); y < moon[1]; y++) set(x, y, z, T.rock);
+set(21, LAKE_Y + 5, 46, T.lamp);
+tree(13, 47, 5, LAKE_Y); tree(22, 34, 4, LAKE_Y);
+
+// ---------------- northeast: the mushroom island, by bridge. Giant mushrooms climb in a ring.
+const SHROOM = [104.5, 100.5], SHROOM_R = 11;
+island(SHROOM[0], SHROOM[1], SHROOM_R, TOP);
+{ const dx = SHROOM[0] - CX, dz = SHROOM[1] - CZ, l = Math.hypot(dx, dz);
+  bridge(CX + dx / l * (MAIN - 2), CZ + dz / l * (MAIN - 2), SHROOM[0] - dx / l * (SHROOM_R - 2), SHROOM[1] - dz / l * (SHROOM_R - 2), TOP); }
+for (let i = 0; i < 7; i++) {
+  const a = 3.6 + i * 0.82, cx = SHROOM[0] + Math.cos(a) * 5.5, cz = SHROOM[1] + Math.sin(a) * 5.5, cap = TOP + 2 + i;
+  for (let y = TOP + 1; y < cap; y++) set(Math.floor(cx), y, Math.floor(cz), T.stem);
+  each(cx, cz, 2.4, (x, z) => { if (!get(x, cap, z)) set(x, cap, z, T.cap); });
+  if (i === 6) set(Math.floor(cx), cap + 1, Math.floor(cz), T.lamp);
+}
+for (let i = 0; i < 14; i++) {   // little mushrooms in the grass
+  const a = R() * Math.PI * 2, d = 7.5 + R() * 2, x = Math.floor(SHROOM[0] + Math.cos(a) * d), z = Math.floor(SHROOM[1] + Math.sin(a) * d);
+  if (get(x, TOP, z) === T.grass && !get(x, TOP + 1, z)) set(x, TOP + 1, z, T.cap);
+}
+
+// ---------------- southeast: the hedge maze island, by bridge
+const MAZE = [102.5, 28.5], MAZE_R = 13;
+island(MAZE[0], MAZE[1], MAZE_R, TOP);
+{ const dx = MAZE[0] - CX, dz = MAZE[1] - CZ, l = Math.hypot(dx, dz);
+  bridge(CX + dx / l * (MAIN - 2), CZ + dz / l * (MAIN - 2), MAZE[0] - dx / l * (MAZE_R - 2), MAZE[1] - dz / l * (MAZE_R - 2), TOP); }
+{
+  const N = 5, CELL = 3, X0 = 95, Z0 = 21;           // 5x5 cells, 2-wide paths, hedges 2 high
+  const open = new Set(), seen = new Set(['0,0']), stack = [[0, 0]];
+  while (stack.length) {
+    const [cx, cz] = stack[stack.length - 1];
+    const next = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([a, b]) => [cx + a, cz + b])
+      .filter(([a, b]) => a >= 0 && b >= 0 && a < N && b < N && !seen.has(a + ',' + b));
+    if (!next.length) { stack.pop(); continue; }
+    const [nx, nz] = next[Math.floor(R() * next.length)];
+    open.add([cx, cz, nx, nz].join()); open.add([nx, nz, cx, cz].join()); seen.add(nx + ',' + nz); stack.push([nx, nz]);
   }
+  const size = N * CELL + 1;
+  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+    const ci = Math.floor(i / CELL), cj = Math.floor(j / CELL), wi = i % CELL === 0, wj = j % CELL === 0;
+    let wall = wi || wj;
+    if (wi && !wj && i > 0 && i < size - 1 && open.has([ci - 1, cj, ci, cj].join())) wall = false;   // gap to the west neighbor
+    if (wj && !wi && j > 0 && j < size - 1 && open.has([ci, cj - 1, ci, cj].join())) wall = false;   // gap to the north neighbor
+    if (i === 0 && (j === size - 2 || j === size - 3)) wall = false;                                // the entrance, toward the bridge
+    const x = X0 + i, z = Z0 + j;
+    set(x, TOP, z, T.path);
+    if (wall) { set(x, TOP + 1, z, T.hedge); set(x, TOP + 2, z, T.hedge); }
+  }
+  for (let z = Z0 + 1; z <= Z0 + 2; z++) for (let x = X0 + size - 3; x <= X0 + size - 2; x++) set(x, TOP, z, T.startile);   // the far corner
+  set(X0 + size - 2, TOP + 1, Z0 + 1, T.lamp);
 }
-set(10, moon[1] + 1, 52, T.lamp);     // a lantern on the moon, for now
+
+// ---------------- far southwest: the hidden shrine, a long hop of stones from the landing islet
+const SHRINE = [20.5, 14.5], SHRINE_R = 5, SHRINE_Y = TOP + 4;
+island(SHRINE[0], SHRINE[1], SHRINE_R, SHRINE_Y, 5);
+stones(LAND, LAND_R, TOP, SHRINE, SHRINE_R, SHRINE_Y);
+each(SHRINE[0], SHRINE[1], 3, (x, z) => set(x, SHRINE_Y, z, T.startile));
+for (const [x, z] of [[18, 12], [22, 12], [18, 16], [22, 16]]) for (let y = SHRINE_Y + 1; y <= SHRINE_Y + 3; y++) set(x, y, z, T.marble);
+for (let z = 12; z <= 16; z++) for (let x = 18; x <= 22; x++) set(x, SHRINE_Y + 4, z, T.marble);
+set(20, SHRINE_Y + 5, 14, T.lamp);
+
+// ---------------- little floating rocks, just scenery
+for (const [x, z, y, r] of [[112, 62, 30, 3], [10, 80, 24, 2.5], [45, 118, 34, 3], [40, 8, 8, 2.5], [120, 120, 40, 2.5], [84, 117, 14, 2], [118, 8, 36, 2], [6, 120, 10, 2.5]])
+  island(x, z, r, y, r * 1.2, T.rock);
 
 // ------------------------------------------------------------------ vox models (8x8x8, value = color + 1)
 function model(name, fill, pivot = [4, 0, 4]) {
@@ -301,4 +402,4 @@ const cart = {
   music,
 };
 writeFileSync(new URL('observatory.b3d.json', root), JSON.stringify(cart) + '\n');
-console.log('observatory.b3d.json:', tiles.length - 1, 'tiles,', map.filter((t) => t).length, 'blocks, deck at y', DECK, ', moon at y', moon[1]);
+console.log('observatory.b3d.json:', tiles.length - 1, 'tiles,', map.filter((t) => t).length, 'blocks, deck at y', DECK, ', moon at y', MOON_Y);

@@ -13,7 +13,14 @@ A little blocky3D game: Lumi the star-keeper explores an observatory floating am
 
 ## What's in the cart
 
-- **Map 0**, 64×64×64: the floating island with a plaza and the Star Well in the middle, a telescope tower with a spiral stair (north), the star library (east), a garden pond and trees (west), a bridge to the landing islet where Lumi starts (south), and floating stepping stones from the tower top up to a moon platform.
+- **Map 0**, 128×64×128: the main island in the middle, with a plaza and the Star Well, a telescope tower with a spiral stair (north), the star library (east), and a garden pond and trees (west). Around it:
+  - **Landing islet** (south), where Lumi starts, joined by a bridge.
+  - **Moon** (northwest, high up), by floating stepping stones from the top of the tower.
+  - **Lake island** (west), a little higher, by stepping stones from the garden: a lake that spills off the edge and a gazebo.
+  - **Mushroom island** (northeast), by bridge: giant mushrooms to climb in a ring.
+  - **Hedge maze island** (southeast), by bridge.
+  - **Hidden shrine** (far southwest), a long hop of stones from the landing islet.
+  - Little floating rocks for scenery.
 - **Vox 0-2**: Lumi standing and two walking steps. **Vox 3**: a star (the big one spins over the Star Well).
 - **Sfx 0-5**: footstep, jump, land, chime, fall, start. **Sfx 8-13 + Music 0-1**: a gentle looping song.
 

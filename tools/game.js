@@ -8,13 +8,13 @@
 // stick, or by dragging on a touch screen. Leave it alone and it swings round
 // behind Lumi. Walking into a 1-block step climbs it, so stairs just work.
 //
-// map 0: the observatory (64 x 64 x 64)
+// map 0: the observatory and the islands around it (128 x 64 x 128)
 // vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star
 // sounds: 0 footstep, 1 jump, 2 land, 3 chime, 4 fall, 5 start; 8-13 the song (Music patterns 0-1)
 
 const R = 0.35                       // Lumi's collision sphere
-const SPAWN = [31.5, 11 + R, 4.5]    // on the little landing islet, looking north at the observatory
-const WELL = [31.5, 11, 35.5]        // the Star Well, middle of the plaza
+const SPAWN = [63.5, 17 + R, 17.5]   // on the little landing islet, looking north at the observatory
+const WELL = [63.5, 17, 63.5]        // the Star Well, middle of the plaza
 const GOAL = 20                      // stars to find (not in the game yet)
 
 let px, py, pz, vx = 0, vy = 0, vz = 0
@@ -106,7 +106,7 @@ function _draw() {
   // camera: behind and above Lumi, pulled in if the observatory is in the way
   let t, yaw, pitch, d
   if (title) {
-    t = [31.5, 16, 35.5]; yaw = time() * 0.02; pitch = -0.08; d = 34
+    t = [63.5, 22, 63.5]; yaw = time() * 0.015; pitch = -0.11; d = 76
   } else {
     t = [px, py + 0.8 + lift, pz]; yaw = camYaw; pitch = -camPitch; d = 4.5
     let [fx, fy, fz] = dir3(yaw, pitch)

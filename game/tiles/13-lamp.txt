@@ -1,0 +1,19 @@
+name lamp
+top
+99999999
+9aaaaaa9
+9aaaaaa9
+9aaaaaa9
+9aaaaaa9
+9aaaaaa9
+9aaaaaa9
+99999999
+side
+h777777h
+h777777h
+h777777h
+haaaaaah
+haaaaaah
+haaaaaah
+haaaaaah
+hhhhhhhh

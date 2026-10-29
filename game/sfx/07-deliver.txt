@@ -1,0 +1,9 @@
+name deliver
+speed 4 loop 0 0
+# pitch wave volume effect
+48 5 5 0
+52 5 5 0
+55 5 5 0
+60 5 5 0
+60 0 3 2
+60 0 2 5

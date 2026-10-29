@@ -1,0 +1,19 @@
+name glass
+top
+77777777
+77cccccc
+7c7ccccc
+7cc7cccc
+7ccc7ccc
+7cccc7cc
+7ccccc7c
+7cccccc7
+side
+hhhhhhhh
+h7ccccch
+h77cccch
+hc77ccch
+hcc77cch
+hccc77ch
+hcccc77h
+hhhhhhhh

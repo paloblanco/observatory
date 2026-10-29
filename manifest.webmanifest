@@ -1,6 +1,6 @@
 {
-  "name": "star observatory",
-  "short_name": "star observa",
+  "name": "Star Observatory",
+  "short_name": "Star Observa",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",

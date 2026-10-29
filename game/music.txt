@@ -1,0 +1,3 @@
+# pattern: up to 4 sound numbers (- for none), then any of: start back stop
+0: 8 9 10 - start
+1: 11 12 13 - back

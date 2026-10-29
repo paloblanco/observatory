@@ -1,0 +1,19 @@
+name stem
+top
+ffff7f77
+ffff77f7
+7f77ffff
+f7ff77ff
+fffff777
+f7fff7f7
+ffff7f7f
+ff7f7777
+side
+7f77f77f
+7f77f77f
+7f77f77f
+7f77f77f
+7f77f77f
+7f77f77f
+7f77f77f
+7f77f77f

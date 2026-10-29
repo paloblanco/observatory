@@ -1,0 +1,7 @@
+{
+  "name": "Star Observatory",
+  "maps": [
+    { "name": "observatory", "size": [128, 64, 128], "origin": [0, 0, 0] }
+  ],
+  "scale": { "snap": false, "root": 0, "type": "minor pentatonic" }
+}

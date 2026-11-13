@@ -1,7 +1,36 @@
 {
   "name": "Star Observatory",
   "maps": [
-    { "name": "observatory", "size": [128, 64, 128], "origin": [0, 0, 0] }
+    {
+      "name": "observatory",
+      "size": [
+        128,
+        64,
+        128
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "library roof",
+      "size": [
+        14,
+        12,
+        16
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    }
   ],
-  "scale": { "snap": false, "root": 0, "type": "minor pentatonic" }
+  "scale": {
+    "snap": false,
+    "root": 0,
+    "type": "minor pentatonic"
+  }
 }

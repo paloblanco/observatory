@@ -3,42 +3,47 @@
 // scattered over the islands: touch one and it follows her; bring them to the
 // Star Well in the middle of the plaza. Bring all 20 to finish.
 //
-// Controls: arrows / WASD / d-pad / stick move (relative to the camera), X jumps.
-// Turn the camera with the mouse (click the game first; Esc frees it), the right
-// stick, or by dragging on a touch screen. Leave it alone and it swings round
-// behind Lumi. Walking into a 1-block step climbs it, so stairs just work.
+// Controls: arrows / WASD / d-pad / stick walk; up is north. There's no jump button:
+// walking into a 1-block step climbs it, so stairs just work. Lumi never climbs onto
+// metal or lamps, so rails keep her on the bridges.
+// The camera is fixed: behind and a little above Lumi, looking north and down, and the
+// world rolls away toward the horizon (cam_set_curve).
 //
-// map 0: the observatory and the islands around it (128 x 64 x 128)
-// scene 0: map 0 plus a star marker (vox 3) for each star to find. Move, add or
+// map 0: the observatory and the islands around it (128 x 64 x 128), built by maps/0-observatory.gen.js
+// map 1: the library's south wall and roof, hidden while Lumi is inside the library
+// scene 0: maps 0 and 1, plus a star marker (vox 3) for each star to find. Move, add or
 //   remove stars in the Scene tab; the game counts whatever markers are there.
 // vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star
-// sounds: 0 footstep, 1 jump, 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
+// sounds: 0 footstep, 1 jump (unused), 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
 //   14 win; 8-13 the song (Music patterns 0-1)
 
 const R = 0.35                       // Lumi's collision sphere
 const SPAWN = [63.5, 17 + R, 17.5]   // on the little landing islet, looking north at the observatory
 const WELL = [63.5, 17, 63.5]        // the Star Well, middle of the plaza
 const TRAIL = 9                      // frames of Lumi's path between each star following her
+const CAM_DIST = 6.5, CAM_PITCH = 0.14// the camera: how far behind Lumi, and how steeply it looks down (turns)
+const CURVE = 0.012                  // how fast the world rolls away ahead (0 = flat)
+const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
+const LIB = [83, 98, 57, 71]         // the library's floor, x0 x1 z0 z1: inside it, map 1 is hidden
 
 let px, py, pz, vx = 0, vy = 0, vz = 0
 let grounded = false, lift = 0, safe
 let facing = 0, walk = 0, stepT = 0
-let camYaw = 0, camPitch = 0.1, idle = 0
+let cam = null                       // where the camera looks, easing after Lumi
 let title = true, flash = 0, nearWell = false
-let M                                // the observatory map (a copy made by scene_load)
+let M, ROOF                          // the observatory and the library roof (copies made by scene_load)
+let inside = false                   // Lumi is in the library
 let stars = []                       // { x, y, z, state: 'free' | 'carried' | 'flying' | 'home', t }
 let carried = []                     // the stars following Lumi, in the order she found them
 let home = 0, goal = 0               // stars in the well, and how many there are
 let path = []                        // Lumi's recent positions, newest first, for the stars to follow
 let ticks = 0, won = false, wonT = 0, best = null
-let sky = []                         // background stars: direction and color
 
 function _init() {
   touch_set_mode(1)                  // on touch screens: an analog circle instead of the d-pad
-  bg(17)                             // deep night blue
-  mouse_set_mode(2)
+  bg(17, 1)                          // a night sky: deep blue overhead, lighter at the horizon
   let s = scene_load(0)
-  M = s.maps[0]
+  M = s.named.world; ROOF = s.named['library roof']
   stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z]) => ({ x, y, z, state: 'free', t: 0 }))
   goal = stars.length
   carried = []; home = 0; path = []
@@ -47,15 +52,12 @@ function _init() {
   best = d ? d.best : null
   ;[px, py, pz] = SPAWN
   safe = [...SPAWN]
-  sky = []
-  for (let i = 0; i < 90; i++) {
-    let yaw = rnd(1), pitch = rnd(0.5) - 0.12
-    sky.push([dir3(yaw, pitch), [7, 7, 10, 12, 15][flr(rnd(5))], rnd(1)])
-  }
+  cam = null
   music(0, 2000)
 }
 
-function solid(x, y, z) { return mgetw(M, x, y, z)[0] > 0 }
+function tile(x, y, z) { let a = mgetw(M, x, y, z)[0]; return a || mgetw(ROOF, x, y, z)[0] }
+function solid(x, y, z) { return tile(x, y, z) > 0 }
 
 function _update() {
   if (flash > 0) flash--
@@ -64,25 +66,13 @@ function _update() {
     return
   }
 
-  // the camera: mouse (once captured) or a finger, the right stick; else swing in behind
-  let [mx, my] = mouse_delta(), [rx, ry] = stick(1)
-  let look = mx * 0.0012 + rx * 0.012, tilt = my * 0.0012 + ry * 0.008
-  camYaw -= look
-  camPitch = mid(0.0, camPitch + tilt, 0.22)
-  idle = look || tilt ? 0 : idle + 1
-
-  // walking, relative to where the camera looks
+  // walking: the camera looks north (+z), so up is +z and right on screen is -x
   let [sx, sy] = stick(0)
-  let [fx, , fz] = dir3(camYaw)
-  let ax = (fx * -sy - fz * sx) * 0.085, az = (fz * -sy + fx * sx) * 0.085
+  let ax = -sx * 0.085, az = -sy * 0.085
   vx = lerp(vx, ax, 0.3); vz = lerp(vz, az, 0.3)
   let moving = abs(ax) + abs(az) > 0.01
-  if (moving) {
-    facing = yaw_to(ax, az); walk++
-    if (idle > 60) camYaw += angdiff(camYaw, facing) * 0.02
-  } else walk = 0
+  if (moving) { facing = yaw_to(ax, az); walk++ } else walk = 0
 
-  if (btnp(5) && grounded) { vy = 0.22; sfx(1, 1) }
   vy = max(vy - 0.012, -0.5)
   px += vx; py += vy; pz += vz
 
@@ -91,13 +81,14 @@ function _update() {
   if (grounded && moving) {
     let m = sqrt(ax * ax + az * az), hx = px + ax / m * (R + 0.15), hz = pz + az / m * (R + 0.15)
     let fy = py - R + 0.5
-    if (solid(hx, fy, hz) && !solid(hx, fy + 1, hz) && !solid(px, fy + 1.5, pz)) { py += 1; lift -= 1 }
+    let t = tile(hx, fy, hz)
+    if (t && !NO_CLIMB.includes(t) && !solid(hx, fy + 1, hz) && !solid(px, fy + 1.5, pz)) { py += 1; lift -= 1 }
   }
   lift *= 0.7
 
   // collision: push out of the map, and learn whether we're standing on it
   let was = grounded, fall = vy
-  let [x, y, z, nx, ny, nz, ground] = mpush(M, px, py, pz, R)
+  let [x, y, z, nx, ny, nz, ground] = mpush([M, ROOF], px, py, pz, R)
   px = x; py = y; pz = z
   grounded = ground >= 0
   if (grounded && vy < 0) vy = 0
@@ -111,6 +102,7 @@ function _update() {
   // fell off the edge: back to the last safe spot
   if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1) }
 
+  inside = px > LIB[0] && px < LIB[1] && pz > LIB[2] && pz < LIB[3]
   if (!won) ticks++
   if (won) wonT++
 
@@ -167,30 +159,22 @@ function ringSpot(k, n) {
 function fmt(s) { return flr(s / 60) + ':' + ('0' + flr(s % 60)).slice(-2) }
 
 function _draw() {
-  // camera: behind and above Lumi, pulled in if the observatory is in the way
-  let t, yaw, pitch, d
+  // the camera: fixed, always looking north and down at Lumi, easing after her. On the title
+  // card it looks down at the whole observatory, flat. In play the world rolls away ahead.
   if (title) {
-    t = [63.5, 22, 63.5]; yaw = time() * 0.015; pitch = -0.11; d = 76
+    cam_set_curve(0)
+    cam_orbit([63.5, 22, 63.5], time() * 0.015, -0.11, 76)
   } else {
-    t = [px, py + 0.8 + lift, pz]; yaw = camYaw; pitch = -camPitch; d = 4.5
-    let [fx, fy, fz] = dir3(yaw, pitch)
-    let h = mray(M, ...t, -fx, -fy, -fz, d)
-    if (h[0]) d = max(1, h[7] - 0.3)
-  }
-  cam_orbit(t, yaw, pitch, d)
-
-  // background stars, far away in every direction, so they never get closer
-  let [fx, fy, fz] = dir3(yaw, pitch)
-  let cx = t[0] - fx * d, cy = t[1] - fy * d, cz = t[2] - fz * d
-  for (let s of sky) {
-    let [dir, c, ph] = s
-    if (sin(time() * 0.3 + ph) > 0.85) continue    // twinkle
-    cube(cx + dir[0] * 300, cy + dir[1] * 300, cz + dir[2] * 300, 1.6, c)
+    let t = [px, py + 0.6 + lift, pz]
+    cam = cam ? lerp(cam, t, 0.15) : t
+    cam_set_curve(CURVE)
+    cam_orbit(cam, 0, -CAM_PITCH, CAM_DIST)
   }
 
   outline(0)
   if (flash > 0) for (let i = 0; i < 32; i++) pal(i, 7)
   map(M)
+  if (!inside) map(ROOF)
   pal()
 
   // the big star turning over the Star Well; it grows as the stars come home
@@ -239,7 +223,6 @@ function _draw() {
   if (carried.length) print('Carrying ' + carried.length, 4, 16, 7, 1)
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
   if (nearWell && !won && !stars.some((st) => st.state == 'flying')) printc('Bring stars to the Star Well!', 228, 10, 1)
-  if (!mouse_locked() && time() < 20) printc('Click or drag to turn the camera', 244, 7, 1)
   if (won && wonT < 600) {
     rectfill(28, 92, 227, 156, 1); rect(28, 92, 227, 156, 10)
     printc('All ' + goal + ' stars!', 100, 10, 1, 2)

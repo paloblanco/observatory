@@ -5049,7 +5049,7 @@ function () {
 // The camera sits behind and a little above Lumi, looking north and down, and the world
 // rolls away toward the horizon (cam_set_curve). Standing still, you can look around with
 // the mouse (click the game first; Esc frees it), the right stick, or a finger drag; the
-// world unrolls while you look. Walking snaps the camera back.
+// world unrolls while you look. Walking eases the camera back.
 //
 // map 0: the observatory and the islands around it (128 x 64 x 128), built by maps/0-observatory.gen.js
 // map 1: the library's south wall and roof. Like the props below, but it fades out completely
@@ -5070,6 +5070,7 @@ const WELL = [63.5, 17, 63.5]        // the Star Well, middle of the plaza
 const TRAIL = 9                      // frames of Lumi's path between each star following her
 const CAM_DIST = 6.5, CAM_PITCH = 0.14// the camera: how far behind Lumi, and how steeply it looks down (turns)
 const CURVE = 0.012                  // how fast the world rolls away ahead (0 = flat)
+const BACK = 60                      // frames the camera takes to ease back when Lumi walks (60 = one second)
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
@@ -5079,6 +5080,7 @@ let facing = 0, walk = 0, stepT = 0
 let cam = null                       // where the camera looks, easing after Lumi
 let camYaw = 0, camPitch = CAM_PITCH // the way the camera looks: north and down, unless you're looking around
 let camK = CURVE, looking = false    // the roll (0 while looking around), and whether you are
+let back = null                      // { yaw, pitch, k, t }: the camera easing back to its default view
 let title = true, flash = 0, nearWell = false
 let M, ROOF                          // the observatory and the library roof (copies made by scene_load)
 let props = []                       // { m, corner, fade, most }: every map in the scene but the world
@@ -5104,7 +5106,7 @@ function _init() {
   best = d ? d.best : null
   ;[px, py, pz] = SPAWN
   safe = [...SPAWN]
-  cam = null; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE; looking = false
+  cam = null; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE; looking = false; back = null
   music(0, 2000)
 }
 
@@ -5131,12 +5133,21 @@ function _update() {
   let moving = abs(ax) + abs(az) > 0.01
   if (moving) { facing = yaw_to(ax, az); walk++ } else walk = 0
 
-  // looking around: only while standing still. Walking snaps the camera back, roll and all.
+  // looking around: only while standing still. Walking eases the camera back to its default
+  // view, roll and all, over one second (BACK frames).
   let [mx, my] = mouse_delta(), [rx, ry] = stick(1)
   let turn = mx * 0.0012 + rx * 0.012, tilt = my * 0.0012 + ry * 0.008
-  if (moving) { looking = false; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE }
-  else if (turn || tilt) { looking = true; camYaw -= turn; camPitch = mid(0, camPitch + tilt, 0.22) }
+  if (moving && looking) { looking = false; back = { yaw: camYaw, pitch: camPitch, k: camK, t: 0 } }
+  else if (!moving && (turn || tilt)) { looking = true; back = null; camYaw -= turn; camPitch = mid(0, camPitch + tilt, 0.22) }
   if (looking) camK = lerp(camK, 0, 0.08)      // unroll gently while looking
+  if (back) {
+    let f = min(++back.t / BACK, 1)
+    f = f * f * (3 - 2 * f)                   // ease in and out
+    camYaw = lerp(back.yaw, back.yaw + angdiff(back.yaw, 0), f)
+    camPitch = lerp(back.pitch, CAM_PITCH, f)
+    camK = lerp(back.k, CURVE, f)
+    if (back.t >= BACK) { back = null; camYaw = 0 }
+  }
 
   vy = max(vy - 0.012, -0.5)
   px += vx; py += vy; pz += vz

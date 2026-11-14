@@ -7,7 +7,7 @@ A little BLOCKO3D game: Lumi the star-keeper explores an observatory floating am
 ## Controls
 
 - Arrows, WASD, d-pad or stick: walk (up is north)
-- Standing still: look around with the mouse (click the game first; Esc frees it), the right stick, or a finger drag. Walking snaps the camera back.
+- Standing still: look around with the mouse (click the game first; Esc frees it), the right stick, or a finger drag. Walking eases the camera back over a second.
 - X or O: start
 - Enter: pause
 

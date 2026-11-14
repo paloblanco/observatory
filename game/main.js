@@ -36,12 +36,14 @@ const CURVE = 0.012                  // how fast the world rolls away ahead (0 =
 const BACK = 60                      // frames the camera takes to ease back when Lumi walks (60 = one second)
 const SPIN = 26, SPIN_REST = 10      // frames a spin lasts, and the pause before the next one
 const SPIN_REACH = 1.45              // how close a chest has to be (center to center) to break
+const FULL_TILT = 0.5                // an analog stick at this tilt or more walks at full speed
+const STEP = 16                      // frames per step (two steps, left and right, make one walk cycle)
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
 let px, py, pz, vx = 0, vy = 0, vz = 0
 let grounded = false, lift = 0, safe
-let facing = 0, walk = 0, stepT = 0
+let facing = 0, walk = 0, stepT = -1
 let cam = null                       // where the camera looks, easing after Lumi
 let camYaw = 0, camPitch = CAM_PITCH // the way the camera looks: north and down, unless you're looking around
 let camK = CURVE, looking = false    // the roll (0 while looking around), and whether you are
@@ -100,12 +102,16 @@ function _update() {
 
   // walking, relative to the way the camera faces: normally north (+z), so up is +z and
   // right on screen is -x; while the camera eases back after looking around, it turns with it
-  let [sx, sy] = stick(0)
+  // An analog stick reaches full speed at half tilt (FULL_TILT), so a thumb on a phone's circle
+  // doesn't have to reach the rim; less than that walks slower. Digital input is always full.
+  let [sx, sy] = stick(0), push = sqrt(sx * sx + sy * sy)
+  if (push > 0) { let k = min(push / FULL_TILT, 1) / push; sx *= k; sy *= k }
   let [fx, , fz] = dir3(camYaw)
   let ax = (fx * -sy - fz * sx) * 0.085, az = (fz * -sy + fx * sx) * 0.085
   vx = lerp(vx, ax, 0.3); vz = lerp(vz, az, 0.3)
+  let pace = min(push / FULL_TILT, 1)          // 1 at full speed
   let moving = abs(ax) + abs(az) > 0.01
-  if (moving) { facing = yaw_to(ax, az); walk++ } else walk = 0
+  if (moving) { facing = yaw_to(ax, az); walk += max(pace, 0.4) } else walk = 0   // slower walking, slower steps
 
   // looking around: only while standing still. Walking eases the camera back to its default
   // view, roll and all, over one second (BACK frames).
@@ -175,7 +181,7 @@ function _update() {
   })
 
   // footsteps
-  if (grounded && moving) { if (--stepT <= 0) { sfx(0, 2); stepT = 15 } } else stepT = 0
+  if (grounded && moving) { let n = flr(walk / STEP); if (n != stepT) { sfx(0, 2); stepT = n } } else stepT = -1   // one footstep per step
 
   // fell off the edge: back to the last safe spot
   if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1) }
@@ -346,13 +352,24 @@ function _draw() {
 
   // Lumi: spinning, she turns twice round and squashes a little; a ring of sparkles circles her
   if (!title) {
-    let frame = !grounded ? 1 : walk == 0 ? 0 : [1, 0, 2, 0][flr(walk / 8) % 4]
-    let yaw = facing, sq = 1
+    let frame = !grounded ? 1 : walk == 0 ? 0 : [1, 0, 2, 0][flr(walk / (STEP / 2)) % 4]
+    let yaw = facing, sq = 1, bob = 0
+    if (walk > 0 && grounded) {
+      // walking: her shoulders twist with each stride, and each step is a little hop: squashed as
+      // the foot lands, then springing up tall through the middle of the step (not a sine)
+      let u = (walk % STEP) / STEP              // 0 at a foot landing, to 1 just before the next
+      let side = flr(walk / STEP) % 2 ? -1 : 1 // which foot is forward
+      yaw += side * 0.035 * (1 - (2 * u - 1) ** 2)   // twist out and back once per step
+      let hop = 4 * u * (1 - u)                 // a parabola: 0 at landing, 1 mid-step
+      sq = 1 + 0.07 * hop - 0.14 * Math.exp(-u * 9)  // stretch mid-step, quick squash on landing
+      bob = 0.06 * hop
+    }
     if (spinT > 0) {
       let f = 1 - spinT / SPIN
       yaw = facing + f * 2; sq = 1 - sin(f * 0.5) * 0.15; frame = 0
     }
-    vox(frame, px, py - R + lift, pz, 0, yaw, 0, 1.4 / sq, 1.4 * sq, 1.4 / sq)
+    let wide = 1.4 / sqrt(sq)                   // keep her volume: taller is thinner
+    vox(frame, px, py - R + lift + bob, pz, 0, yaw, 0, wide, 1.4 * sq, wide)
     if (spinT > 0) {
       let f = 1 - spinT / SPIN, r = 0.6 + sin(f * 0.5) * 0.7
       outline(9, false)

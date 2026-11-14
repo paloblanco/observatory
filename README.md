@@ -24,7 +24,7 @@ There's no jumping: Lumi climbs 1-block steps by walking into them, and every st
   - Bridges and walkways have metal rails, which Lumi never climbs, so she can't walk off them.
   - Little floating rocks for scenery.
 - **Map 1**: the library's south wall and roof. The game stops drawing it while Lumi is inside the library, so the fixed camera can see her.
-- **Maps 2-9, props**: 2 the tower (with its stair and telescope), 3 the gazebo, 4 the shrine, 5-7 trees (small, medium, tall), 8 a giant mushroom, 9 a giant mushroom with a lantern. The scene places them: 12 trees and 7 mushrooms. When a prop is between the camera and Lumi, it fades to 70% see-through. The maze, the fountain and other low things stay in map 0 and never fade.
+- **Maps 2-9, props**: 2 the tower (with its stair and telescope), 3 the gazebo, 4 the shrine, 5-7 trees (small, medium, tall), 8 a giant mushroom, 9 a giant mushroom with a lantern. The scene places them: 12 trees and 7 mushrooms. When a prop is between the camera and Lumi, it fades to 70% see-through. Props draw the backs of their faces too, so the effect still shows when the camera is inside one. The maze, the fountain and other low things stay in map 0 and never fade.
 - Every map is built by a script in `game/maps/` (`N-name.gen.js`; the trees and mushrooms share `tree.js` and `mushroom.js`). Change the level there.
 - **Scene 0**: the world, the library roof, every prop, and one star marker (vox 3) for each star. Move, add or remove props and stars in the IDE's **Scene** tab; the game picks up whatever is there.
 - **Vox 0-2**: Lumi standing and two walking steps. **Vox 3**: a star.

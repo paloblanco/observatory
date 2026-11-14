@@ -5249,7 +5249,7 @@ function _draw() {
   for (let p of props) {
     if (title) p.fade = 0
     if (p.fade > 0.02) fillp(p.fade, -1)
-    map(p.m)
+    map(p.m, true)                   // backs too, so a prop the camera is inside still shows (see-through)
     fillp()
   }
   pal()

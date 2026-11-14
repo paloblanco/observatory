@@ -11,8 +11,12 @@
 //
 // map 0: the observatory and the islands around it (128 x 64 x 128), built by maps/0-observatory.gen.js
 // map 1: the library's south wall and roof, hidden while Lumi is inside the library
-// scene 0: maps 0 and 1, plus a star marker (vox 3) for each star to find. Move, add or
-//   remove stars in the Scene tab; the game counts whatever markers are there.
+// maps 2-9: props the scene places: 2 tower, 3 gazebo, 4 shrine, 5-7 trees (small, medium,
+//   tall), 8 giant mushroom, 9 giant mushroom with a lantern. When one of them is between the
+//   camera and Lumi, it turns 70% see-through.
+// scene 0: maps 0 and 1 (named "world" and "library roof"), every prop, and a star marker
+//   (vox 3) for each star to find. Move, add or remove props and stars in the Scene tab; the
+//   game counts whatever is there.
 // vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star
 // sounds: 0 footstep, 1 jump (unused), 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
 //   14 win; 8-13 the song (Music patterns 0-1)
@@ -32,6 +36,8 @@ let facing = 0, walk = 0, stepT = 0
 let cam = null                       // where the camera looks, easing after Lumi
 let title = true, flash = 0, nearWell = false
 let M, ROOF                          // the observatory and the library roof (copies made by scene_load)
+let props = []                       // { m, corner, fade }: every other map in the scene
+let close = []                       // the props close to Lumi this frame
 let inside = false                   // Lumi is in the library
 let stars = []                       // { x, y, z, state: 'free' | 'carried' | 'flying' | 'home', t }
 let carried = []                     // the stars following Lumi, in the order she found them
@@ -44,6 +50,7 @@ function _init() {
   bg(17, 1)                          // a night sky: deep blue overhead, lighter at the horizon
   let s = scene_load(0)
   M = s.named.world; ROOF = s.named['library roof']
+  props = s.maps.filter((m) => m != M && m != ROOF).map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0 }))
   stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z]) => ({ x, y, z, state: 'free', t: 0 }))
   goal = stars.length
   carried = []; home = 0; path = []
@@ -56,7 +63,10 @@ function _init() {
   music(0, 2000)
 }
 
-function tile(x, y, z) { let a = mgetw(M, x, y, z)[0]; return a || mgetw(ROOF, x, y, z)[0] }
+function tile(x, y, z) {
+  for (let m of [M, ROOF, ...close.map((p) => p.m)]) { let t = mgetw(m, x, y, z)[0]; if (t) return t }
+  return 0
+}
 function solid(x, y, z) { return tile(x, y, z) > 0 }
 
 function _update() {
@@ -65,6 +75,9 @@ function _update() {
     if (btnp(4) || btnp(5)) { title = false; sfx(5) }
     return
   }
+
+  // the props near enough to touch (measured from each map's corner; the tower is the biggest, 21 blocks)
+  close = props.filter((p) => dist([px, pz], [p.corner[0], p.corner[2]]) < 26)
 
   // walking: the camera looks north (+z), so up is +z and right on screen is -x
   let [sx, sy] = stick(0)
@@ -88,7 +101,7 @@ function _update() {
 
   // collision: push out of the map, and learn whether we're standing on it
   let was = grounded, fall = vy
-  let [x, y, z, nx, ny, nz, ground] = mpush([M, ROOF], px, py, pz, R)
+  let [x, y, z, nx, ny, nz, ground] = mpush([M, ROOF, ...close.map((p) => p.m)], px, py, pz, R)
   px = x; py = y; pz = z
   grounded = ground >= 0
   if (grounded && vy < 0) vy = 0
@@ -156,6 +169,23 @@ function ringSpot(k, n) {
   return [WELL[0] + sin(a) * 2.6, WELL[1] + 3 + cos(time() * 0.4 + k) * 0.3, WELL[2] + cos(a) * 2.6]
 }
 
+// Any prop between the camera and Lumi fades to 70% see-through (and back when she's clear of it).
+// Two lines of sight, from her feet and from her head, so half-hidden counts too.
+function seeThrough() {
+  let [dx, dy, dz] = dir3(0, -CAM_PITCH)
+  let c = [cam[0] - dx * CAM_DIST, cam[1] - dy * CAM_DIST, cam[2] - dz * CAM_DIST]
+  for (let p of props) {
+    let hit = false
+    if (dist([px, pz], [p.corner[0], p.corner[2]]) < 30) {
+      for (let h of [0.3, 1.3]) {
+        let o = [px, py - R + lift + h, pz], v = [c[0] - o[0], c[1] - o[1], c[2] - o[2]], len = dist(o, c)
+        if (mray(p.m, ...o, ...v, len)[0]) hit = true
+      }
+    }
+    p.fade = lerp(p.fade, hit ? 0.7 : 0, 0.15)
+  }
+}
+
 function fmt(s) { return flr(s / 60) + ':' + ('0' + flr(s % 60)).slice(-2) }
 
 function _draw() {
@@ -169,12 +199,19 @@ function _draw() {
     cam = cam ? lerp(cam, t, 0.15) : t
     cam_set_curve(CURVE)
     cam_orbit(cam, 0, -CAM_PITCH, CAM_DIST)
+    seeThrough()
   }
 
   outline(0)
   if (flash > 0) for (let i = 0; i < 32; i++) pal(i, 7)
   map(M)
   if (!inside) map(ROOF)
+  for (let p of props) {
+    if (title) p.fade = 0
+    if (p.fade > 0.02) fillp(p.fade, -1)
+    map(p.m)
+    fillp()
+  }
   pal()
 
   // the big star turning over the Star Well; it grows as the stars come home

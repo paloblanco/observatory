@@ -73,13 +73,6 @@ export default (map) => {
     }
   }
 
-  function tree(x, z, h, top = TOP) {
-    for (let y = top + 1; y < top + 1 + h; y++) set(x, y, z, T.trunk);
-    const cy = top + h;
-    for (let dz = -3; dz <= 3; dz++) for (let dy = -2; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
-      if (Math.hypot(dx, dy * 1.2, dz) < 2.9 + R() * 0.4 && !get(x + dx, cy + dy, z + dz)) set(x + dx, cy + dy, z + dz, T.leaves);
-    }
-  }
   function lamp(x, z, top) { for (let y = top + 1; y <= top + 3; y++) set(x, y, z, T.metal); set(x, top + 4, z, T.lamp); }
 
   // ---------------- the main island
@@ -108,34 +101,8 @@ export default (map) => {
     lamp(x, z, TOP);
   }
 
-  // north: the telescope tower. Its stair climbs along the south face, from east to west, then
-  // turns north onto the deck, so the whole climb faces the camera.
-  const TX = 63.5, TZ = 87.5, TOWER = 5.5, STEPS = 12, DECK = TOP + 1 + STEPS;
-  each(TX, TZ, TOWER, (x, z, r) => {
-    for (let y = TOP + 1; y < DECK; y++) set(x, y, z, (y - TOP) % 4 === 0 && r > TOWER - 1 ? T.glass : T.brick);
-    set(x, DECK, z, r > TOWER - 1 ? T.marble : T.planks);
-  });
-  for (let k = 1; k <= STEPS; k++) {
-    const x = 76 - k, top = TOP + k;               // step 1 at x = 75, y 17; step 12 at x = 64, y 28
-    for (const z of [80, 81]) {
-      for (let y = TOP + 1; y <= top; y++) set(x, y, z, y === top ? T.marble : T.brick);
-      for (let y = top + 1; y <= top + 3; y++) set(x, y, z, 0);   // headroom
-    }
-    set(x, top, 79, T.brick); set(x, top + 1, 79, T.metal);           // a rail on the open side
-    for (let y = TOP + 1; y < top; y++) set(x, y, 79, T.brick);
-  }
-  for (const z of [80, 81]) for (let x = 62; x <= 63; x++) for (let y = TOP + 1; y <= DECK - 1; y++) set(x, y, z, y === DECK - 1 ? T.marble : T.brick);   // the landing
-  // a rail round the deck's edge, open where the stair and the moon walk meet it
-  each(TX, TZ, TOWER, (x, z, r) => {
-    if (r <= TOWER - 1) return;
-    const open = (x >= 61 && x <= 64 && z <= 83) || (x <= 59 && z >= 87 && z <= 92);
-    if (!open) set(x, DECK + 1, z, T.metal);
-  });
-  // the telescope on the deck, a brass tube tilted at the sky
-  for (let i = 0; i < 9; i++) {
-    const y = DECK + 1 + Math.floor(i * 0.8), z = TZ - 1 + i * 0.6;
-    for (let dx = 0; dx < 2; dx++) for (let dy = 0; dy < 2; dy++) set(63 + dx, y + dy, z, i === 8 ? T.glass : T.brass);
-  }
+  // north: the telescope tower, its stair and the telescope are map 2 (a scene places it)
+  const STEPS = 12, DECK = TOP + 1 + STEPS;
 
   // east: the star library, a little house with a door facing the plaza
   const LX0 = 84, LX1 = 95, LZ0 = 57, LZ1 = 70;
@@ -163,7 +130,7 @@ export default (map) => {
     else if (get(x, TOP, z)) set(x, TOP, z, T.path);
   });
   for (let x = 35; x <= 45; x++) set(x, TOP, 63, T.planks);   // a little plank walk across
-  for (const [x, z, h] of [[36, 52, 5], [46, 77, 4], [35, 74, 6], [47, 50, 4], [34, 59, 5], [45, 40, 5], [84, 42, 4], [88, 82, 5], [78, 92, 4], [42, 88, 5]]) tree(x, z, h);
+  // (the trees are maps 5-7, placed by the scene)
 
   // ---------------- south: the landing islet, where Lumi starts, and its bridge
   const LAND = [63.5, 17.5], LAND_R = 6;
@@ -184,13 +151,7 @@ export default (map) => {
   for (let z = 37; z <= 39; z++) for (let x = 7; x <= 10; x++) { set(x, LAKE_Y, z, 0); set(x, LAKE_Y - 1, z, T.water); }   // the lake runs to the edge...
   for (let z = 37; z <= 39; z++) for (let y = LAKE_Y - 10; y < LAKE_Y - 1; y++) set(6, y, z, T.water);  // ...and spills off it
   bridge(36, 50, TOP, 24.5, 45, LAKE_Y);
-  for (let z = 44; z <= 48; z++) for (let x = 19; x <= 23; x++) {        // a gazebo
-    set(x, LAKE_Y, z, T.marble);
-    if ((x === 19 || x === 23) && (z === 44 || z === 48)) for (let y = LAKE_Y + 1; y <= LAKE_Y + 3; y++) set(x, y, z, T.marble);
-    set(x, LAKE_Y + 4, z, T.roof);
-  }
-  set(21, LAKE_Y + 5, 46, T.lamp);
-  tree(13, 47, 5, LAKE_Y); tree(22, 34, 4, LAKE_Y);
+  for (let z = 44; z <= 48; z++) for (let x = 19; x <= 23; x++) set(x, LAKE_Y, z, T.marble);   // the gazebo's floor (the gazebo is map 3)
 
   // ---------------- northeast: the mushroom island, by bridge. Giant mushrooms climb in a ring,
   // each cap one block above the last and touching it, so Lumi can walk up them.
@@ -198,12 +159,7 @@ export default (map) => {
   island(SHROOM[0], SHROOM[1], SHROOM_R, TOP);
   { const dx = SHROOM[0] - CX, dz = SHROOM[1] - CZ, l = Math.hypot(dx, dz);
     bridge(CX + dx / l * (MAIN - 2), CZ + dz / l * (MAIN - 2), TOP, SHROOM[0] - dx / l * (SHROOM_R - 2), SHROOM[1] - dz / l * (SHROOM_R - 2), TOP); }
-  for (let i = 0; i < 7; i++) {
-    const a = 3.6 + i * 0.82, cx = SHROOM[0] + Math.cos(a) * 5.5, cz = SHROOM[1] + Math.sin(a) * 5.5, cap = TOP + 1 + i;
-    for (let y = TOP + 1; y < cap; y++) set(cx, y, cz, T.stem);
-    each(cx, cz, 2.9, (x, z) => { if (!get(x, cap, z)) set(x, cap, z, T.cap); });
-    if (i === 6) set(cx, cap + 1, cz, T.lamp);
-  }
+  // (the giant mushrooms are maps 8 and 9, placed by the scene)
   for (let i = 0; i < 14; i++) {   // little mushrooms in the grass
     const a = R() * Math.PI * 2, d = 7.5 + R() * 2, x = Math.floor(SHROOM[0] + Math.cos(a) * d), z = Math.floor(SHROOM[1] + Math.sin(a) * d);
     if (get(x, TOP, z) === T.grass && !get(x, TOP + 1, z)) set(x, TOP + 1, z, T.cap);
@@ -245,9 +201,7 @@ export default (map) => {
   island(SHRINE[0], SHRINE[1], SHRINE_R, SHRINE_Y, 5);
   bridge(LAND[0] - LAND_R + 2, LAND[1] - 0.5, TOP, SHRINE[0] + SHRINE_R - 2, SHRINE[1] + 0.5, SHRINE_Y);
   each(SHRINE[0], SHRINE[1], 3, (x, z) => set(x, SHRINE_Y, z, T.startile));
-  for (const [x, z] of [[18, 12], [22, 12], [18, 16], [22, 16]]) for (let y = SHRINE_Y + 1; y <= SHRINE_Y + 3; y++) set(x, y, z, T.marble);
-  for (let z = 12; z <= 16; z++) for (let x = 18; x <= 22; x++) set(x, SHRINE_Y + 4, z, T.marble);
-  set(20, SHRINE_Y + 5, 14, T.lamp);
+  // (the shrine's pillars and roof are map 4)
 
   // ---------------- little floating rocks, just scenery
   for (const [x, z, y, r] of [[112, 62, 30, 3], [10, 80, 24, 2.5], [45, 118, 34, 3], [40, 8, 8, 2.5], [120, 120, 40, 2.5], [84, 117, 14, 2], [118, 8, 36, 2], [6, 120, 10, 2.5]])

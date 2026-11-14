@@ -1,0 +1,9 @@
+name key
+speed 3 loop 0 0
+# pitch wave volume effect: a bright jingle
+50 4 4 0
+55 4 4 0
+59 4 4 0
+62 4 4 0
+59 4 3 0
+62 4 3 5

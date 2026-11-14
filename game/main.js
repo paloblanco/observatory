@@ -3,7 +3,8 @@
 // scattered over the islands: touch one and it follows her; bring them to the
 // Star Well in the middle of the plaza. Bring all 20 to finish.
 //
-// Controls: arrows / WASD / d-pad / stick walk; up is north. There's no jump button:
+// Controls: arrows / WASD / d-pad / stick walk; up is away from the camera (north). X or O
+// spins: Lumi twirls in place, breaking any chest next to her. There's no jump button:
 // walking into a 1-block step climbs it, so stairs just work. Lumi never climbs onto
 // metal or lamps, so rails keep her on the bridges.
 // The camera sits behind and a little above Lumi, looking north and down, and the world
@@ -17,12 +18,14 @@
 // maps 2-9: props the scene places: 2 tower, 3 gazebo, 4 shrine, 5-7 trees (small, medium,
 //   tall), 8 giant mushroom, 9 giant mushroom with a lantern. When one of them is between the
 //   camera and Lumi, it turns 70% see-through.
-// scene 0: maps 0 and 1 (named "world" and "library roof"), every prop, and a star marker
-//   (vox 3) for each star to find. Move, add or remove props and stars in the Scene tab; the
-//   game counts whatever is there.
-// vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star
+// scene 0: maps 0 and 1 (named "world" and "library roof"), every prop, and markers: vox 3 a
+//   star; vox 4 an empty chest, 5 a chest with a star inside, 6 a chest with a key inside.
+//   Move, add or remove props, stars and chests in the Scene tab; the game counts whatever is
+//   there (the goal is every star, loose or in a chest). In the game every chest looks like vox 4.
+// vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star, 4 chest, 5-6 chest
+//   markers (a mark on top, for the Scene tab), 7 key
 // sounds: 0 footstep, 1 jump (unused), 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
-//   14 win; 8-13 the song (Music patterns 0-1)
+//   14 win, 15 spin, 16 chest breaks, 17 key; 8-13 the song (Music patterns 0-1)
 
 const R = 0.35                       // Lumi's collision sphere
 const SPAWN = [63.5, 17 + R, 17.5]   // on the little landing islet, looking north at the observatory
@@ -31,6 +34,8 @@ const TRAIL = 9                      // frames of Lumi's path between each star 
 const CAM_DIST = 6.5, CAM_PITCH = 0.14// the camera: how far behind Lumi, and how steeply it looks down (turns)
 const CURVE = 0.012                  // how fast the world rolls away ahead (0 = flat)
 const BACK = 60                      // frames the camera takes to ease back when Lumi walks (60 = one second)
+const SPIN = 26, SPIN_REST = 10      // frames a spin lasts, and the pause before the next one
+const SPIN_REACH = 1.45              // how close a chest has to be (center to center) to break
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
@@ -50,6 +55,10 @@ let carried = []                     // the stars following Lumi, in the order s
 let home = 0, goal = 0               // stars in the well, and how many there are
 let path = []                        // Lumi's recent positions, newest first, for the stars to follow
 let ticks = 0, won = false, wonT = 0, best = null
+let spinT = 0, spinRest = 0, spunOnce = false   // the spin: frames left, frames until the next, and whether she has spun yet
+let chests = []                      // { x, y, z, has: null | 'star' | 'key', broken }
+let keys = [], keyCount = 0          // keys lying out ({ x, y, z, pop }), and keys Lumi has
+let bits = []                        // flying bits: { x, y, z, vx, vy, vz, c, s, life }
 
 function _init() {
   touch_set_mode(1)                  // on touch screens: an analog circle instead of the d-pad
@@ -58,8 +67,11 @@ function _init() {
   let s = scene_load(0)
   M = s.named.world; ROOF = s.named['library roof']
   props = s.maps.filter((m) => m != M).map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE }))
-  stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z]) => ({ x, y, z, state: 'free', t: 0 }))
-  goal = stars.length
+  stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z]) => ({ x, y, z, state: 'free', t: 0, pop: 0 }))
+  chests = s.things.filter(([v]) => v >= 4 && v <= 6)
+    .map(([v, x, y, z]) => ({ x, y, z, has: [null, 'star', 'key'][v - 4], broken: false }))
+  goal = stars.length + chests.filter((c) => c.has == 'star').length
+  spinT = 0; spinRest = 0; spunOnce = false; keys = []; keyCount = 0; bits = []
   carried = []; home = 0; path = []
   ticks = 0; won = false; wonT = 0
   let d = load()
@@ -86,9 +98,11 @@ function _update() {
   // the props near enough to touch (measured from each map's corner; the tower is the biggest, 21 blocks)
   close = props.filter((p) => dist([px, pz], [p.corner[0], p.corner[2]]) < 26)
 
-  // walking: the camera looks north (+z), so up is +z and right on screen is -x
+  // walking, relative to the way the camera faces: normally north (+z), so up is +z and
+  // right on screen is -x; while the camera eases back after looking around, it turns with it
   let [sx, sy] = stick(0)
-  let ax = -sx * 0.085, az = -sy * 0.085
+  let [fx, , fz] = dir3(camYaw)
+  let ax = (fx * -sy - fz * sx) * 0.085, az = (fz * -sy + fx * sx) * 0.085
   vx = lerp(vx, ax, 0.3); vz = lerp(vz, az, 0.3)
   let moving = abs(ax) + abs(az) > 0.01
   if (moving) { facing = yaw_to(ax, az); walk++ } else walk = 0
@@ -132,6 +146,34 @@ function _update() {
   if (grounded && !was && fall < -0.15) sfx(2, 1)
   if (grounded) safe = [px, py + 0.3, pz]
 
+  pushChests()
+
+  // spinning: X or O. Lumi can still walk while she spins.
+  if (spinRest > 0) spinRest--
+  if (spinT > 0 && --spinT == 0) spinRest = SPIN_REST
+  if ((btnp(4) || btnp(5)) && spinT == 0 && spinRest == 0) { spinT = SPIN; spunOnce = true; sfx(15, 1) }
+  if (spinT > 0) {
+    for (let c of chests) {
+      if (!c.broken && dist([px, pz], [c.x, c.z]) < SPIN_REACH + 0.5 && abs(py - R - c.y) < 1.5) breakChest(c)
+    }
+    if (spinT % 2 == 0) {            // a trail of sparkles flung off the spin
+      let a = rnd(1)
+      bits.push({ x: px + sin(a) * 0.7, y: py - R + 0.4 + rnd(0.8), z: pz + cos(a) * 0.7,
+        vx: sin(a) * 0.04, vy: 0.02, vz: cos(a) * 0.04, c: rnd([10, 7, 12, 23]), s: 0.12, life: 24, g: 0 })
+    }
+  }
+
+  // flying bits: wood from chests and sparkles
+  for (let b of bits) { b.x += b.vx; b.y += b.vy; b.z += b.vz; b.vy -= b.g; b.life-- }
+  bits = bits.filter((b) => b.life > 0)
+
+  // keys: pop out of a chest, then Lumi picks them up by touching them
+  for (let k of keys) if (k.pop > 0) k.pop--
+  keys = keys.filter((k) => {
+    if (k.pop == 0 && dist([px, pz], [k.x, k.z]) < 1 && abs(py - R - k.y) < 1.5) { keyCount++; sfx(17, 3); return false }
+    return true
+  })
+
   // footsteps
   if (grounded && moving) { if (--stepT <= 0) { sfx(0, 2); stepT = 15 } } else stepT = 0
 
@@ -147,7 +189,8 @@ function _update() {
 
   // touching a star: it starts following her
   for (let st of stars) {
-    if (st.state == 'free' && dist([px, pz], [st.x, st.z]) < 1.1 && abs(py - st.y) < 1.8) {
+    if (st.pop > 0) st.pop--
+    if (st.state == 'free' && st.pop == 0 && dist([px, pz], [st.x, st.z]) < 1.1 && abs(py - st.y) < 1.8) {
       st.state = 'carried'; carried.push(st); sfx(6, 3)
     }
   }
@@ -171,6 +214,32 @@ function _update() {
       if (home == goal) win()
     }
   }
+}
+
+// Chests are solid, like a block: push Lumi out sideways (she can't climb onto one).
+function pushChests() {
+  let w = 0.5 + R
+  for (let c of chests) {
+    if (c.broken || py - R > c.y + 0.9 || py + R < c.y) continue
+    let dx = px - c.x, dz = pz - c.z, ex = w - abs(dx), ez = w - abs(dz)
+    if (ex > 0 && ez > 0) {
+      if (ex < ez) { px = c.x + sgn(dx) * w; vx = 0 } else { pz = c.z + sgn(dz) * w; vz = 0 }
+    }
+  }
+}
+
+// A chest breaks into flying planks; what was inside pops out.
+function breakChest(c) {
+  c.broken = true; sfx(16, 2)
+  for (let i = 0; i < 16; i++) {
+    let a = rnd(1), sp = 0.04 + rnd(0.06)
+    bits.push({ x: c.x + rnd(0.8) - 0.4, y: c.y + rnd(0.8), z: c.z + rnd(0.8) - 0.4,
+      vx: sin(a) * sp, vy: 0.08 + rnd(0.1), vz: cos(a) * sp, c: rnd([4, 4, 20, 9, 10]), s: 0.15 + rnd(0.15), life: 40, g: 0.012 })
+  }
+  for (let i = 0; i < 6; i++) bits.push({ x: c.x, y: c.y + 0.4, z: c.z, vx: rnd(0.04) - 0.02, vy: 0.03,
+    vz: rnd(0.04) - 0.02, c: 7, s: 0.35, life: 20, g: 0 })      // a puff of dust
+  if (c.has == 'star') stars.push({ x: c.x, y: c.y + 0.7, z: c.z, state: 'free', t: 0, pop: 30 })
+  if (c.has == 'key') keys.push({ x: c.x, y: c.y, z: c.z, pop: 30 })
 }
 
 function win() {
@@ -248,9 +317,12 @@ function _draw() {
   let k = 0
   for (let st of stars) {
     let p, s = 0.7
-    if (st.state == 'free') {
+    if (st.state == 'free' && st.pop > 0) {      // just out of a chest: it pops up and grows
+      let f = 1 - st.pop / 30
+      p = [st.x, st.y - 0.5 + sin(f * 0.5) * 1.3, st.z]; s = 0.7 * f
+    } else if (st.state == 'free') {
       p = [st.x, st.y + sin(time() + st.x) * 0.12, st.z]
-      if (!title) line3(st.x, st.y - 0.6, st.z, st.x, st.y + 7, st.z, 10)
+      if (!title && st.pop == 0) line3(st.x, st.y - 0.6, st.z, st.x, st.y + 7, st.z, 10)
     } else if (st.state == 'carried') {
       p = trailSpot(carried.indexOf(st)); s = 0.5
     } else if (st.state == 'flying') {
@@ -264,12 +336,37 @@ function _draw() {
   }
   outline(0)
 
-  // Lumi
+  // chests, and keys waiting to be picked up
+  for (let c of chests) if (!c.broken) vox(4, c.x, c.y, c.z)
+  for (let k of keys) {
+    let f = k.pop > 0 ? 1 - k.pop / 30 : 1
+    let y = k.y + 0.4 + (k.pop > 0 ? sin(f * 0.5) * 1.3 : 0.6 + sin(time() * 2) * 0.1)
+    vox(7, k.x, y, k.z, 0, time() * 0.5, 0, 0.7 * f)
+  }
+
+  // Lumi: spinning, she turns twice round and squashes a little; a ring of sparkles circles her
   if (!title) {
     let frame = !grounded ? 1 : walk == 0 ? 0 : [1, 0, 2, 0][flr(walk / 8) % 4]
-    vox(frame, px, py - R + lift, pz, 0, facing, 0, 1.4)
+    let yaw = facing, sq = 1
+    if (spinT > 0) {
+      let f = 1 - spinT / SPIN
+      yaw = facing + f * 2; sq = 1 - sin(f * 0.5) * 0.15; frame = 0
+    }
+    vox(frame, px, py - R + lift, pz, 0, yaw, 0, 1.4 / sq, 1.4 * sq, 1.4 / sq)
+    if (spinT > 0) {
+      let f = 1 - spinT / SPIN, r = 0.6 + sin(f * 0.5) * 0.7
+      outline(9, false)
+      for (let i = 0; i < 8; i++) {
+        let a = i / 8 + f * 2.5
+        vox(3, px + sin(a) * r, py - R + lift + 0.5 + sin(a * 2 + f) * 0.25, pz + cos(a) * r, 0, a, 0, 0.36)
+      }
+      outline(0)
+    }
   }
   outline()
+
+  // flying bits
+  for (let b of bits) cube(b.x, b.y, b.z, b.s * min(1, b.life / 10), b.c)
 
   if (title) {
     printc('Star', 54, 10, 1, 3)
@@ -282,6 +379,9 @@ function _draw() {
 
   print('Stars ' + home + '/' + goal, 4, 4, 10, 1)
   if (carried.length) print('Carrying ' + carried.length, 4, 16, 7, 1)
+  if (keyCount) print('Keys ' + keyCount, 4, carried.length ? 28 : 16, 23, 1)
+  let chestNear = chests.some((c) => !c.broken && dist([px, pz], [c.x, c.z]) < 3)
+  if (chestNear && !spunOnce) printc('Press X to spin!', 214, 10, 1)
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
   if (!mouse_locked() && !looking && time() < 25) printc('Stand still, drag to look around', 244, 7, 1)
   if (nearWell && !won && !stars.some((st) => st.state == 'flying')) printc('Bring stars to the Star Well!', 228, 10, 1)

@@ -6,9 +6,9 @@ A little BLOCKO3D game: Lumi the star-keeper explores an observatory floating am
 
 ## Controls
 
-- Arrows, WASD, d-pad or stick: walk (up is north)
-- Standing still: look around with the mouse (click the game first; Esc frees it), the right stick, or a finger drag. Walking eases the camera back over a second.
-- X or O: start
+- Arrows, WASD, d-pad or stick: walk (up is away from the camera: north, unless you've been looking around)
+- X or O: spin. Lumi twirls in a ring of sparkles and breaks any chest next to her.
+- Standing still: look around with the mouse (click the game first; Esc frees it), the right stick, or a finger drag. Walking eases the camera back over a second, and Lumi walks relative to the camera as it turns.
 - Enter: pause
 
 There's no jumping: Lumi climbs 1-block steps by walking into them, and every star can be reached on foot. The camera sits behind and above her, looking north and down, and the world rolls away toward the horizon; it flattens out while you look around.
@@ -28,10 +28,11 @@ There's no jumping: Lumi climbs 1-block steps by walking into them, and every st
 - **Maps 2-9, props**: 2 the tower (with its stair and telescope), 3 the gazebo, 4 the shrine, 5-7 trees (small, medium, tall), 8 a giant mushroom, 9 a giant mushroom with a lantern. The scene places them: 12 trees and 7 mushrooms. When a prop is between the camera and Lumi, it fades to 70% see-through. Props draw the backs of their faces too, so the effect still shows when the camera is inside one. The maze, the fountain and other low things stay in map 0 and never fade.
 - Every map is built by a script in `game/maps/` (`N-name.gen.js`; the trees and mushrooms share `tree.js` and `mushroom.js`). Change the level there.
 - **Scene 0**: the world, the library roof, every prop, and one star marker (vox 3) for each star. Move, add or remove props and stars in the IDE's **Scene** tab; the game picks up whatever is there.
-- **Vox 0-2**: Lumi standing and two walking steps. **Vox 3**: a star.
-- **Sounds**: 0 footstep, 1 jump, 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver, 14 win. 8-13 and Music 0-1 are a gentle looping song.
+- **Chests**: solid like a block until Lumi spins next to one. Some are empty; some hold a star or a key. In the Scene tab, chest markers are vox 4 (empty), 5 (a star inside) and 6 (a key inside); in the game they all look the same. Keys are counted on screen but don't open anything yet.
+- **Vox 0-2**: Lumi standing and two walking steps. **Vox 3**: a star. **Vox 4**: a chest (5 and 6 are the marked chest markers). **Vox 7**: a key.
+- **Sounds**: 0 footstep, 1 jump, 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver, 14 win, 15 spin, 16 chest breaks, 17 key. 8-13 and Music 0-1 are a gentle looping song.
 
-Where the stars are: the landing islet, the garden plank, inside the library, the tower deck, behind the tower, the west trees, the east and south fields, the moon, the moon walkway, the gazebo, the waterfall, the lake walkway, the middle and far corner of the hedge maze, inside the shrine, the shrine walkway, the mushroom field, and two mushroom tops.
+Where the stars are (two of them inside chests: by the start and in the east field): the landing islet, the garden plank, inside the library, the tower deck, behind the tower, the west trees, the east and south fields, the moon, the moon walkway, the gazebo, the waterfall, the lake walkway, the middle and far corner of the hedge maze, inside the shrine, the shrine walkway, the mushroom field, and two mushroom tops.
 
 ## Files
 

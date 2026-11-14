@@ -1,0 +1,8 @@
+name break
+speed 5 loop 0 0
+# pitch wave volume effect: a wooden crack and a thump
+30 6 6 3
+22 6 6 3
+16 2 5 3
+12 6 4 5
+10 6 2 5

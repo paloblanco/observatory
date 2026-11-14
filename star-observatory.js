@@ -5077,7 +5077,14 @@ const BACK = 60                      // frames the camera takes to ease back whe
 const SPIN = 26, SPIN_REST = 10      // frames a spin lasts, and the pause before the next one
 const SPIN_REACH = 1.45              // how close a chest has to be (center to center) to break
 const FULL_TILT = 0.5                // an analog stick at this tilt or more walks at full speed
-const STEP = 16                      // frames per step (two steps, left and right, make one walk cycle)
+const STEP = 12                      // frames per step (two steps, left and right, make one walk cycle)
+// walk dust: the colors kicked up from each tile Lumi walks on (by tile number, see tiles/)
+const DUST = {
+  1: [3, 11, 27], 2: [4, 20, 22], 3: [5, 21, 13], 4: [6, 7, 13], 5: [7, 6, 15], 6: [13, 29, 1],
+  7: [4, 9, 20], 8: [12, 28, 7], 9: [10, 9, 23], 10: [8, 24, 2], 11: [11, 27, 3], 12: [4, 20],
+  14: [9, 10, 4], 15: [4, 20, 8], 16: [10, 28, 1], 17: [5, 21], 18: [12, 7], 19: [11, 14, 10, 27],
+  20: [7, 15, 22], 21: [8, 7, 24], 22: [7, 15], 23: [3, 19, 27],
+}
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
@@ -5221,7 +5228,10 @@ function _update() {
   })
 
   // footsteps
-  if (grounded && moving) { let n = flr(walk / STEP); if (n != stepT) { sfx(0, 2); stepT = n } } else stepT = -1   // one footstep per step
+  if (grounded && moving) {          // one footstep per step, with a little dust kicked up behind her
+    let n = flr(walk / STEP)
+    if (n != stepT) { sfx(0, 2); stepT = n; kickDust() }
+  } else stepT = -1
 
   // fell off the edge: back to the last safe spot
   if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1) }
@@ -5260,6 +5270,31 @@ function _update() {
       if (home == goal) win()
     }
   }
+}
+
+// The tile under Lumi's feet (0 if none), from the world and the props near her.
+function ground() { return tile(px, py - R - 0.3, pz) }
+
+// A few bits of whatever she's walking on, kicked up and back from her heel.
+function kickDust() {
+  let cols = DUST[ground()]
+  if (!cols) return
+  let [bx, , bz] = dir3(facing)
+  for (let i = 0; i < 4; i++) {
+    bits.push({ x: px - bx * 0.2 + rnd(0.3) - 0.15, y: py - R + 0.05, z: pz - bz * 0.2 + rnd(0.3) - 0.15,
+      vx: -bx * (0.02 + rnd(0.02)) + rnd(0.02) - 0.01, vy: 0.04 + rnd(0.04), vz: -bz * (0.02 + rnd(0.02)) + rnd(0.02) - 0.01,
+      c: rnd(cols), s: 0.13 + rnd(0.08), life: 20 + flr(rnd(10)), g: 0.006 })
+  }
+}
+
+// How far below Lumi's feet the floor is (for her shadow), looking down in the world and nearby props.
+function floorBelow() {
+  let best = 40
+  for (let m of [M, ...close.map((p) => p.m)]) {
+    let h = mray(m, px, py, pz, 0, -1, 0, 40)
+    if (h[0]) best = min(best, h[7])
+  }
+  return best
 }
 
 // Chests are solid, like a block: push Lumi out sideways (she can't climb onto one).
@@ -5409,6 +5444,14 @@ function _draw() {
       yaw = facing + f * 2; sq = 1 - sin(f * 0.5) * 0.15; frame = 0
     }
     let wide = 1.4 / sqrt(sq)                   // keep her volume: taller is thinner
+    // her shadow: the same model squashed flat and drawn all black, on the floor below her
+    let below = floorBelow()
+    if (below < 40) {
+      outline()
+      for (let i = 0; i < 32; i++) pal(i, 0)
+      vox(frame, px, py - below + 0.03, pz, 0, yaw, 0, wide * 1.05, 0.01, wide * 1.05)
+      pal(); outline(0)
+    }
     vox(frame, px, py - R + lift + bob, pz, 0, yaw, 0, wide, 1.4 * sq, wide)
     if (spinT > 0) {
       let f = 1 - spinT / SPIN, r = 0.6 + sin(f * 0.5) * 0.7

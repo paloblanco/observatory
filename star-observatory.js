@@ -5078,7 +5078,10 @@ const SPIN = 26, SPIN_REST = 10      // frames a spin lasts, and the pause befor
 const SPIN_REACH = 1.45              // how close a chest has to be (center to center) to break
 const FULL_TILT = 0.5                // an analog stick at this tilt or more walks at full speed
 const STEP = 12                      // frames per step (two steps, left and right, make one walk cycle)
-// walk dust: the colors kicked up from each tile Lumi walks on (by tile number, see tiles/)
+// walk dust: white puffs (DUST_COLORED = false), or bits in the colors of the tile Lumi walks
+// on (true), from the DUST table (by tile number, see tiles/). Either way only tiles listed in
+// the table make dust.
+const DUST_COLORED = false
 const DUST = {
   1: [3, 11, 27], 2: [4, 20, 22], 3: [5, 21, 13], 4: [6, 7, 13], 5: [7, 6, 15], 6: [13, 29, 1],
   7: [4, 9, 20], 8: [12, 28, 7], 9: [10, 9, 23], 10: [8, 24, 2], 11: [11, 27, 3], 12: [4, 20],
@@ -5279,6 +5282,7 @@ function ground() { return tile(px, py - R - 0.3, pz) }
 function kickDust() {
   let cols = DUST[ground()]
   if (!cols) return
+  if (!DUST_COLORED) cols = [7]
   let [bx, , bz] = dir3(facing)
   for (let i = 0; i < 4; i++) {
     bits.push({ x: px - bx * 0.2 + rnd(0.3) - 0.15, y: py - R + 0.05, z: pz - bz * 0.2 + rnd(0.3) - 0.15,

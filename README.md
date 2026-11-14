@@ -7,10 +7,11 @@ A little BLOCKO3D game: Lumi the star-keeper explores an observatory floating am
 ## Controls
 
 - Arrows, WASD, d-pad or stick: walk (up is north)
+- Standing still: look around with the mouse (click the game first; Esc frees it), the right stick, or a finger drag. Walking snaps the camera back.
 - X or O: start
 - Enter: pause
 
-There's no jumping: Lumi climbs 1-block steps by walking into them, and every star can be reached on foot. The camera is fixed behind and above her, looking north and down, and the world rolls away toward the horizon.
+There's no jumping: Lumi climbs 1-block steps by walking into them, and every star can be reached on foot. The camera sits behind and above her, looking north and down, and the world rolls away toward the horizon; it flattens out while you look around.
 
 ## What's in the game
 
@@ -23,7 +24,7 @@ There's no jumping: Lumi climbs 1-block steps by walking into them, and every st
   - **Hidden shrine** (far southwest), by a long walkway from the landing islet.
   - Bridges and walkways have metal rails, which Lumi never climbs, so she can't walk off them.
   - Little floating rocks for scenery.
-- **Map 1**: the library's south wall and roof. The game stops drawing it while Lumi is inside the library, so the fixed camera can see her.
+- **Map 1**: the library's south wall and roof. It works like the props below, but fades out completely when it's between the camera and Lumi, so you can see her inside the library.
 - **Maps 2-9, props**: 2 the tower (with its stair and telescope), 3 the gazebo, 4 the shrine, 5-7 trees (small, medium, tall), 8 a giant mushroom, 9 a giant mushroom with a lantern. The scene places them: 12 trees and 7 mushrooms. When a prop is between the camera and Lumi, it fades to 70% see-through. Props draw the backs of their faces too, so the effect still shows when the camera is inside one. The maze, the fountain and other low things stay in map 0 and never fade.
 - Every map is built by a script in `game/maps/` (`N-name.gen.js`; the trees and mushrooms share `tree.js` and `mushroom.js`). Change the level there.
 - **Scene 0**: the world, the library roof, every prop, and one star marker (vox 3) for each star. Move, add or remove props and stars in the IDE's **Scene** tab; the game picks up whatever is there.

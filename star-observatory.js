@@ -5046,11 +5046,14 @@ function () {
 // Controls: arrows / WASD / d-pad / stick walk; up is north. There's no jump button:
 // walking into a 1-block step climbs it, so stairs just work. Lumi never climbs onto
 // metal or lamps, so rails keep her on the bridges.
-// The camera is fixed: behind and a little above Lumi, looking north and down, and the
-// world rolls away toward the horizon (cam_set_curve).
+// The camera sits behind and a little above Lumi, looking north and down, and the world
+// rolls away toward the horizon (cam_set_curve). Standing still, you can look around with
+// the mouse (click the game first; Esc frees it), the right stick, or a finger drag; the
+// world unrolls while you look. Walking snaps the camera back.
 //
 // map 0: the observatory and the islands around it (128 x 64 x 128), built by maps/0-observatory.gen.js
-// map 1: the library's south wall and roof, hidden while Lumi is inside the library
+// map 1: the library's south wall and roof. Like the props below, but it fades out completely
+//   when it's between the camera and Lumi (so you can see her inside the library).
 // maps 2-9: props the scene places: 2 tower, 3 gazebo, 4 shrine, 5-7 trees (small, medium,
 //   tall), 8 giant mushroom, 9 giant mushroom with a lantern. When one of them is between the
 //   camera and Lumi, it turns 70% see-through.
@@ -5068,17 +5071,18 @@ const TRAIL = 9                      // frames of Lumi's path between each star 
 const CAM_DIST = 6.5, CAM_PITCH = 0.14// the camera: how far behind Lumi, and how steeply it looks down (turns)
 const CURVE = 0.012                  // how fast the world rolls away ahead (0 = flat)
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
-const LIB = [83, 98, 57, 71]         // the library's floor, x0 x1 z0 z1: inside it, map 1 is hidden
+const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
 let px, py, pz, vx = 0, vy = 0, vz = 0
 let grounded = false, lift = 0, safe
 let facing = 0, walk = 0, stepT = 0
 let cam = null                       // where the camera looks, easing after Lumi
+let camYaw = 0, camPitch = CAM_PITCH // the way the camera looks: north and down, unless you're looking around
+let camK = CURVE, looking = false    // the roll (0 while looking around), and whether you are
 let title = true, flash = 0, nearWell = false
 let M, ROOF                          // the observatory and the library roof (copies made by scene_load)
-let props = []                       // { m, corner, fade }: every other map in the scene
+let props = []                       // { m, corner, fade, most }: every map in the scene but the world
 let close = []                       // the props close to Lumi this frame
-let inside = false                   // Lumi is in the library
 let stars = []                       // { x, y, z, state: 'free' | 'carried' | 'flying' | 'home', t }
 let carried = []                     // the stars following Lumi, in the order she found them
 let home = 0, goal = 0               // stars in the well, and how many there are
@@ -5088,9 +5092,10 @@ let ticks = 0, won = false, wonT = 0, best = null
 function _init() {
   touch_set_mode(1)                  // on touch screens: an analog circle instead of the d-pad
   bg(17, 1)                          // a night sky: deep blue overhead, lighter at the horizon
+  mouse_set_mode(2)                  // the mouse looks around, once captured by a click
   let s = scene_load(0)
   M = s.named.world; ROOF = s.named['library roof']
-  props = s.maps.filter((m) => m != M && m != ROOF).map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0 }))
+  props = s.maps.filter((m) => m != M).map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE }))
   stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z]) => ({ x, y, z, state: 'free', t: 0 }))
   goal = stars.length
   carried = []; home = 0; path = []
@@ -5099,12 +5104,12 @@ function _init() {
   best = d ? d.best : null
   ;[px, py, pz] = SPAWN
   safe = [...SPAWN]
-  cam = null
+  cam = null; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE; looking = false
   music(0, 2000)
 }
 
 function tile(x, y, z) {
-  for (let m of [M, ROOF, ...close.map((p) => p.m)]) { let t = mgetw(m, x, y, z)[0]; if (t) return t }
+  for (let m of [M, ...close.map((p) => p.m)]) { let t = mgetw(m, x, y, z)[0]; if (t) return t }
   return 0
 }
 function solid(x, y, z) { return tile(x, y, z) > 0 }
@@ -5126,6 +5131,13 @@ function _update() {
   let moving = abs(ax) + abs(az) > 0.01
   if (moving) { facing = yaw_to(ax, az); walk++ } else walk = 0
 
+  // looking around: only while standing still. Walking snaps the camera back, roll and all.
+  let [mx, my] = mouse_delta(), [rx, ry] = stick(1)
+  let turn = mx * 0.0012 + rx * 0.012, tilt = my * 0.0012 + ry * 0.008
+  if (moving) { looking = false; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE }
+  else if (turn || tilt) { looking = true; camYaw -= turn; camPitch = mid(0, camPitch + tilt, 0.22) }
+  if (looking) camK = lerp(camK, 0, 0.08)      // unroll gently while looking
+
   vy = max(vy - 0.012, -0.5)
   px += vx; py += vy; pz += vz
 
@@ -5141,7 +5153,7 @@ function _update() {
 
   // collision: push out of the map, and learn whether we're standing on it
   let was = grounded, fall = vy
-  let [x, y, z, nx, ny, nz, ground] = mpush([M, ROOF, ...close.map((p) => p.m)], px, py, pz, R)
+  let [x, y, z, nx, ny, nz, ground] = mpush([M, ...close.map((p) => p.m)], px, py, pz, R)
   px = x; py = y; pz = z
   grounded = ground >= 0
   if (grounded && vy < 0) vy = 0
@@ -5155,7 +5167,6 @@ function _update() {
   // fell off the edge: back to the last safe spot
   if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1) }
 
-  inside = px > LIB[0] && px < LIB[1] && pz > LIB[2] && pz < LIB[3]
   if (!won) ticks++
   if (won) wonT++
 
@@ -5209,20 +5220,22 @@ function ringSpot(k, n) {
   return [WELL[0] + sin(a) * 2.6, WELL[1] + 3 + cos(time() * 0.4 + k) * 0.3, WELL[2] + cos(a) * 2.6]
 }
 
-// Any prop between the camera and Lumi fades to 70% see-through (and back when she's clear of it).
-// Two lines of sight, from her feet and from her head, so half-hidden counts too.
+// Any prop between the camera and Lumi fades to 70% see-through, the library roof and wall to
+// nothing (and back when she's clear of it).
+// Two lines of sight, from her feet and from her head, so half-hidden counts too. They run a few
+// blocks past the camera, so a prop the camera is inside (like the hollow library roof) counts.
 function seeThrough() {
-  let [dx, dy, dz] = dir3(0, -CAM_PITCH)
+  let [dx, dy, dz] = dir3(camYaw, -camPitch)
   let c = [cam[0] - dx * CAM_DIST, cam[1] - dy * CAM_DIST, cam[2] - dz * CAM_DIST]
   for (let p of props) {
     let hit = false
     if (dist([px, pz], [p.corner[0], p.corner[2]]) < 30) {
       for (let h of [0.3, 1.3]) {
         let o = [px, py - R + lift + h, pz], v = [c[0] - o[0], c[1] - o[1], c[2] - o[2]], len = dist(o, c)
-        if (mray(p.m, ...o, ...v, len)[0]) hit = true
+        if (mray(p.m, ...o, ...v, len + 3)[0]) hit = true    // a little past the camera: inside a prop counts too
       }
     }
-    p.fade = lerp(p.fade, hit ? 0.7 : 0, 0.15)
+    p.fade = lerp(p.fade, hit ? p.most : 0, 0.15)
   }
 }
 
@@ -5237,17 +5250,17 @@ function _draw() {
   } else {
     let t = [px, py + 0.6 + lift, pz]
     cam = cam ? lerp(cam, t, 0.15) : t
-    cam_set_curve(CURVE)
-    cam_orbit(cam, 0, -CAM_PITCH, CAM_DIST)
+    cam_set_curve(camK)
+    cam_orbit(cam, camYaw, -camPitch, CAM_DIST)
     seeThrough()
   }
 
   outline(0)
   if (flash > 0) for (let i = 0; i < 32; i++) pal(i, 7)
   map(M)
-  if (!inside) map(ROOF)
   for (let p of props) {
     if (title) p.fade = 0
+    if (p.fade > 0.98) continue      // faded out completely
     if (p.fade > 0.02) fillp(p.fade, -1)
     map(p.m, true)                   // backs too, so a prop the camera is inside still shows (see-through)
     fillp()
@@ -5299,6 +5312,7 @@ function _draw() {
   print('Stars ' + home + '/' + goal, 4, 4, 10, 1)
   if (carried.length) print('Carrying ' + carried.length, 4, 16, 7, 1)
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
+  if (!mouse_locked() && !looking && time() < 25) printc('Stand still, drag to look around', 244, 7, 1)
   if (nearWell && !won && !stars.some((st) => st.state == 'flying')) printc('Bring stars to the Star Well!', 228, 10, 1)
   if (won && wonT < 600) {
     rectfill(28, 92, 227, 156, 1); rect(28, 92, 227, 156, 10)

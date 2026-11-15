@@ -23,7 +23,7 @@
 //   Move, add or remove props, stars and chests in the Scene tab; the game counts whatever is
 //   there (the goal is every star, loose or in a chest). In the game every chest looks like vox 4.
 // vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star, 4 chest, 5-6 chest
-//   markers (a mark on top, for the Scene tab), 7 key
+//   markers (a mark on top, for the Scene tab), 7 key, 8 Lumi's spin smear (swapped in mid-spin)
 // sounds: 0 footstep, 1 jump (unused), 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
 //   14 win, 15 spin, 16 chest breaks, 17 key; 8-13 the song (Music patterns 0-1)
 
@@ -235,6 +235,19 @@ function _update() {
   }
 }
 
+// How far the spin's sparkle stars are from Lumi, f from 0 (spin starts) to 1 (ends): they burst
+// out, overshoot a little and settle (ease-out-back), hold there, then zip back in, faster and faster.
+function sparkleRadius(f) {
+  const RMAX = 1.25, OUT = 0.2, IN = 0.72
+  if (f < OUT) {
+    let t = f / OUT - 1, c = 2.2
+    return RMAX * (1 + (c + 1) * t * t * t + c * t * t)
+  }
+  if (f < IN) return RMAX
+  let t = (f - IN) / (1 - IN)
+  return RMAX * (1 - t * t * t)
+}
+
 // The tile under Lumi's feet (0 if none), from the world and the props near her.
 function ground() { return tile(px, py - R - 0.3, pz) }
 
@@ -405,7 +418,8 @@ function _draw() {
     }
     if (spinT > 0) {
       let f = 1 - spinT / SPIN
-      yaw = facing + f * 2; sq = 1 - sin(f * 0.5) * 0.15; frame = 0
+      yaw = facing + f * 2; sq = 1 - sin(f * 0.5) * 0.15
+      frame = (spinT >> 1) % 2 && spinT > 2 && f > 0.08 ? 8 : 0   // the smear frame, on and off every 2 frames
     }
     let wide = 1.4 / sqrt(sq)                   // keep her volume: taller is thinner
     // her shadow: the same model squashed flat and drawn all black, on the floor below her
@@ -418,11 +432,13 @@ function _draw() {
     }
     vox(frame, px, py - R + lift + bob, pz, 0, yaw, 0, wide, 1.4 * sq, wide)
     if (spinT > 0) {
-      let f = 1 - spinT / SPIN, r = 0.6 + sin(f * 0.5) * 0.7
+      // five sparkle stars circle her the way she turns, a bit slower than she does (fast enough
+      // and they'd seem to turn backwards, like wagon wheels on film)
+      let f = 1 - spinT / SPIN, r = sparkleRadius(f)
       outline(9, false)
-      for (let i = 0; i < 8; i++) {
-        let a = i / 8 + f * 2.5
-        vox(3, px + sin(a) * r, py - R + lift + 0.5 + sin(a * 2 + f) * 0.25, pz + cos(a) * r, 0, a, 0, 0.36)
+      for (let i = 0; i < 5; i++) {
+        let a = i / 5 + f * 1.2
+        vox(3, px + sin(a) * r, py - R + lift + 0.5 + sin(a * 2 + f) * 0.2, pz + cos(a) * r, 0, a, 0, 0.36 * min(1, r / 0.6 + 0.2))
       }
       outline(0)
     }

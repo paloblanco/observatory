@@ -5207,7 +5207,14 @@ function _update() {
   // spinning: X or O. Lumi can still walk while she spins.
   if (spinRest > 0) spinRest--
   if (spinT > 0 && --spinT == 0) spinRest = SPIN_REST
-  if ((btnp(4) || btnp(5)) && spinT == 0 && spinRest == 0) { spinT = SPIN; spunOnce = true; sfx(15, 1) }
+  if ((btnp(4) || btnp(5)) && spinT == 0 && spinRest == 0) {
+    spinT = SPIN; spunOnce = true; sfx(15, 1)
+    for (let i = 0; i < 14; i++) {    // a burst of white flecks flung out as the spin starts
+      let a = i / 14 + rnd(0.04), sp = 0.13 + rnd(0.07)
+      bits.push({ x: px + sin(a) * 0.3, y: py - R + 0.3 + rnd(0.7), z: pz + cos(a) * 0.3,
+        vx: sin(a) * sp, vy: rnd(0.04) - 0.01, vz: cos(a) * sp, c: 7, s: 0.16 + rnd(0.08), life: 12 + flr(rnd(6)), g: 0, drag: 0.82 })
+    }
+  }
   if (spinT > 0) {
     for (let c of chests) {
       if (!c.broken && dist([px, pz], [c.x, c.z]) < SPIN_REACH + 0.5 && abs(py - R - c.y) < 1.5) breakChest(c)
@@ -5220,7 +5227,10 @@ function _update() {
   }
 
   // flying bits: wood from chests and sparkles
-  for (let b of bits) { b.x += b.vx; b.y += b.vy; b.z += b.vz; b.vy -= b.g; b.life-- }
+  for (let b of bits) {
+    b.x += b.vx; b.y += b.vy; b.z += b.vz; b.vy -= b.g; b.life--
+    if (b.drag) { b.vx *= b.drag; b.vy *= b.drag; b.vz *= b.drag }
+  }
   bits = bits.filter((b) => b.life > 0)
 
   // keys: pop out of a chest, then Lumi picks them up by touching them
@@ -5274,6 +5284,10 @@ function _update() {
     }
   }
 }
+
+// How far round the spin has turned, f from 0 to 1: fast at the start (1.4 times the average
+// rate), slowing to 0.6 times it by the end. Lumi turns 2 x this, the sparkle ring 1.2 x this.
+function spinTurn(f) { return 0.6 * f + 0.4 * (1 - (1 - f) * (1 - f)) }
 
 // How far the spin's sparkle stars are from Lumi, f from 0 (spin starts) to 1 (ends): they burst
 // out, overshoot a little and settle (ease-out-back), hold there, then zip back in, faster and faster.
@@ -5458,7 +5472,7 @@ function _draw() {
     }
     if (spinT > 0) {
       let f = 1 - spinT / SPIN
-      yaw = facing + f * 2; sq = 1 - sin(f * 0.5) * 0.15
+      yaw = facing + spinTurn(f) * 2; sq = 1 - sin(f * 0.5) * 0.15
       frame = (spinT >> 1) % 2 && spinT > 2 && f > 0.08 ? 8 : 0   // the smear frame, on and off every 2 frames
     }
     let wide = 1.4 / sqrt(sq)                   // keep her volume: taller is thinner
@@ -5477,7 +5491,7 @@ function _draw() {
       let f = 1 - spinT / SPIN, r = sparkleRadius(f)
       outline(9, false)
       for (let i = 0; i < 5; i++) {
-        let a = i / 5 + f * 1.2
+        let a = i / 5 + spinTurn(f) * 1.2
         vox(3, px + sin(a) * r, py - R + lift + 0.5 + sin(a * 2 + f) * 0.2, pz + cos(a) * r, 0, a, 0, 0.36 * min(1, r / 0.6 + 0.2))
       }
       outline(0)

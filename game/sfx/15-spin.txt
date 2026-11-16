@@ -1,6 +1,6 @@
 name spin
 speed 4 loop 0 0
-# pitch wave volume effect: a rising phaser whoosh
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 28 7 3 1
 32 7 4 1
 36 7 4 1

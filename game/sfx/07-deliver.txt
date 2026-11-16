@@ -1,6 +1,6 @@
 name deliver
 speed 4 loop 0 0
-# pitch wave volume effect
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 48 5 5 0
 52 5 5 0
 55 5 5 0

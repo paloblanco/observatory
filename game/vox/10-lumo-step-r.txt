@@ -1,6 +1,6 @@
 name lumo step R
 pivot 4 0 4
-# Lumi's brother: same build and poses as vox 0-2 (Lumi), his own hair and clothes
+# 8 layers from the bottom (y0) up; each is 8 rows from back (z0) to front (z7), x0-x7 left to right
 y0
 ........
 ........

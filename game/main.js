@@ -12,7 +12,7 @@
 // the mouse (click the game first; Esc frees it), the right stick, or a finger drag; the
 // world unrolls while you look. Walking eases the camera back.
 //
-// map 0: the observatory and the islands around it (128 x 64 x 128), built by maps/0-observatory.gen.js
+// map 0: the observatory and the islands around it (128 x 64 x 128), maps/0-observatory.txt
 // map 1: the library's south wall and roof. Like the props below, but it fades out completely
 //   when it's between the camera and Lumi (so you can see her inside the library).
 // maps 2-9: props the scene places: 2 tower, 3 gazebo, 4 shrine, 5-7 trees (small, medium,

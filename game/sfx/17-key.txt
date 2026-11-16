@@ -1,6 +1,6 @@
 name key
 speed 3 loop 0 0
-# pitch wave volume effect: a bright jingle
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 50 4 4 0
 55 4 4 0
 59 4 4 0

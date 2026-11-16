@@ -1,6 +1,6 @@
 name break
 speed 5 loop 0 0
-# pitch wave volume effect: a wooden crack and a thump
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 30 6 6 3
 22 6 6 3
 16 2 5 3

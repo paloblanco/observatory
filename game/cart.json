@@ -1,140 +1,16 @@
 {
   "name": "Star Observatory",
   "maps": [
-    {
-      "name": "observatory",
-      "size": [
-        128,
-        64,
-        128
-      ],
-      "origin": [
-        0,
-        0,
-        0
-      ]
-    },
-    {
-      "name": "library roof",
-      "size": [
-        14,
-        12,
-        16
-      ],
-      "origin": [
-        0,
-        0,
-        0
-      ]
-    },
-    {
-      "name": "tower",
-      "size": [
-        21,
-        24,
-        17
-      ],
-      "origin": [
-        0,
-        0,
-        0
-      ]
-    },
-    {
-      "name": "gazebo",
-      "size": [
-        5,
-        5,
-        5
-      ],
-      "origin": [
-        0,
-        0,
-        0
-      ]
-    },
-    {
-      "name": "shrine",
-      "size": [
-        5,
-        5,
-        5
-      ],
-      "origin": [
-        0,
-        0,
-        0
-      ]
-    },
-    {
-      "name": "tree small",
-      "size": [
-        7,
-        7,
-        7
-      ],
-      "origin": [
-        3.5,
-        0,
-        3.5
-      ]
-    },
-    {
-      "name": "tree medium",
-      "size": [
-        7,
-        8,
-        7
-      ],
-      "origin": [
-        3.5,
-        0,
-        3.5
-      ]
-    },
-    {
-      "name": "tree tall",
-      "size": [
-        7,
-        9,
-        7
-      ],
-      "origin": [
-        3.5,
-        0,
-        3.5
-      ]
-    },
-    {
-      "name": "mushroom",
-      "size": [
-        7,
-        7,
-        7
-      ],
-      "origin": [
-        3.5,
-        6,
-        3.5
-      ]
-    },
-    {
-      "name": "mushroom lantern",
-      "size": [
-        7,
-        8,
-        7
-      ],
-      "origin": [
-        3.5,
-        6,
-        3.5
-      ]
-    }
+    { "name": "observatory", "size": [128, 64, 128], "origin": [0, 0, 0] },
+    { "name": "library roof", "size": [14, 12, 16], "origin": [0, 0, 0] },
+    { "name": "tower", "size": [21, 24, 17], "origin": [0, 0, 0] },
+    { "name": "gazebo", "size": [5, 5, 5], "origin": [0, 0, 0] },
+    { "name": "shrine", "size": [5, 5, 5], "origin": [0, 0, 0] },
+    { "name": "tree small", "size": [7, 7, 7], "origin": [3.5, 0, 3.5] },
+    { "name": "tree medium", "size": [7, 8, 7], "origin": [3.5, 0, 3.5] },
+    { "name": "tree tall", "size": [7, 9, 7], "origin": [3.5, 0, 3.5] },
+    { "name": "mushroom", "size": [7, 7, 7], "origin": [3.5, 6, 3.5] },
+    { "name": "mushroom lantern", "size": [7, 8, 7], "origin": [3.5, 6, 3.5] }
   ],
-  "scale": {
-    "snap": false,
-    "root": 0,
-    "type": "minor pentatonic"
-  }
+  "scale": { "snap": false, "root": 0, "type": "minor pentatonic" }
 }

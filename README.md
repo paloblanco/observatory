@@ -26,7 +26,7 @@ There's no jumping: Lumi climbs 1-block steps by walking into them, and every st
   - Little floating rocks for scenery.
 - **Map 1**: the library's south wall and roof. It works like the props below, but fades out completely when it's between the camera and Lumi, so you can see her inside the library.
 - **Maps 2-9, props**: 2 the tower (with its stair and telescope), 3 the gazebo, 4 the shrine, 5-7 trees (small, medium, tall), 8 a giant mushroom, 9 a giant mushroom with a lantern. The scene places them: 12 trees and 7 mushrooms. When a prop is between the camera and Lumi, it fades to 70% see-through. Props draw the backs of their faces too, so the effect still shows when the camera is inside one. The maze, the fountain and other low things stay in map 0 and never fade.
-- Every map is built by a script in `game/maps/` (`N-name.gen.js`; the trees and mushrooms share `tree.js` and `mushroom.js`). Change the level there.
+- Every map is a text file in `game/maps/` (`N-name.txt`): a legend of tiles, then one floor plan per layer from the bottom up. Edit them in the IDE's Map tab, or as text.
 - **Scene 0**: the world, the library roof, every prop, and one star marker (vox 3) for each star. Move, add or remove props and stars in the IDE's **Scene** tab; the game picks up whatever is there.
 - **Chests**: solid like a block until Lumi spins next to one. Some are empty; some hold a star or a key. In the Scene tab, chest markers are vox 4 (empty), 5 (a star inside) and 6 (a key inside); in the game they all look the same. Keys are counted on screen but don't open anything yet.
 - **Heroes**: after the title, a character select screen: left / right to choose, X or O to begin. The choice is remembered. Each hero is three vox models in a row (standing, left step, right step), listed in `HEROES` at the top of `main.js`.
@@ -56,6 +56,14 @@ b3d pack game/ --out observatory.b3d.json        # the cart, for the IDE
 b3d export game/ --out .                         # the playable site
 ```
 
-**Editing in the IDE:** open `observatory.b3d.json`, edit, **Save** over it, then run `b3d unpack observatory.b3d.json game/` so `game/` catches up, and `b3d export game/ --out .`. If you change the maps in the IDE, `pack` will say the map scripts no longer match: delete the `.gen.js` files to keep your IDE edits from then on.
+**Editing in the IDE** (maps, tiles, models, sounds, the Scene tab). The cart holds everything, so always start from a fresh one:
+
+1. `git pull`, then `b3d pack game/ --out observatory.b3d.json` so the cart has the latest of everything.
+2. Open `observatory.b3d.json` in the IDE, edit, and **Save** over it.
+3. `b3d unpack observatory.b3d.json game/`.
+4. `git diff --stat`: only what you meant to change should show (say `game/maps/` and `game/scenes.json`). If anything else changed, `git checkout -- <those files>` puts it back.
+5. `b3d export game/ --out .`, then commit and push.
+
+**Working on maps together.** The maps are text, so git merges two people's edits as long as they don't touch the same rows of the same layer. Still, pull before editing a map, push soon after, and say which maps you changed.
 
 Commit and push; GitHub Pages picks it up.

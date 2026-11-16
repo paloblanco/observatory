@@ -1,5 +1,6 @@
 name key
 pivot 3 4 4
+# 8 layers from the bottom (y0) up; each is 8 rows from back (z0) to front (z7), x0-x7 left to right
 y0
 ........
 ........

@@ -29,7 +29,8 @@ There's no jumping: Lumi climbs 1-block steps by walking into them, and every st
 - Every map is built by a script in `game/maps/` (`N-name.gen.js`; the trees and mushrooms share `tree.js` and `mushroom.js`). Change the level there.
 - **Scene 0**: the world, the library roof, every prop, and one star marker (vox 3) for each star. Move, add or remove props and stars in the IDE's **Scene** tab; the game picks up whatever is there.
 - **Chests**: solid like a block until Lumi spins next to one. Some are empty; some hold a star or a key. In the Scene tab, chest markers are vox 4 (empty), 5 (a star inside) and 6 (a key inside); in the game they all look the same. Keys are counted on screen but don't open anything yet.
-- **Vox 0-2**: Lumi standing and two walking steps. **Vox 3**: a star. **Vox 4**: a chest (5 and 6 are the marked chest markers). **Vox 7**: a key. **Vox 8**: Lumi's spin smear frame.
+- **Heroes**: after the title, a character select screen: left / right to choose, X or O to begin. The choice is remembered. Each hero is three vox models in a row (standing, left step, right step), listed in `HEROES` at the top of `main.js`.
+- **Vox 0-2**: Lumi standing and two walking steps. **Vox 8-10**: Lumo, her brother, the same way. **Vox 3**: a star. **Vox 4**: a chest (5 and 6 are the marked chest markers). **Vox 7**: a key.
 - **Sounds**: 0 footstep, 1 jump, 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver, 14 win, 15 spin, 16 chest breaks, 17 key. 8-13 and Music 0-1 are a gentle looping song.
 
 Where the stars are (two of them inside chests: by the start and in the east field): the landing islet, the garden plank, inside the library, the tower deck, behind the tower, the west trees, the east and south fields, the moon, the moon walkway, the gazebo, the waterfall, the lake walkway, the middle and far corner of the hedge maze, inside the shrine, the shrine walkway, the mushroom field, and two mushroom tops.

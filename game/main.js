@@ -23,7 +23,8 @@
 //   Move, add or remove props, stars and chests in the Scene tab; the game counts whatever is
 //   there (the goal is every star, loose or in a chest). In the game every chest looks like vox 4.
 // vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star, 4 chest, 5-6 chest
-//   markers (a mark on top, for the Scene tab), 7 key, 8 Lumi's spin smear (swapped in mid-spin)
+//   markers (a mark on top, for the Scene tab), 7 key,
+//   8-10 Lumo (standing, step L, step R): each hero is 3 models in a row, see HEROES
 // sounds: 0 footstep, 1 jump (unused), 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
 //   14 win, 15 spin, 16 chest breaks, 17 key; 8-13 the song (Music patterns 0-1)
 
@@ -34,6 +35,9 @@ const TRAIL = 9                      // frames of Lumi's path between each star 
 const CAM_DIST = 6.5, CAM_PITCH = 0.14// the camera: how far behind Lumi, and how steeply it looks down (turns)
 const CURVE = 0.012                  // how fast the world rolls away ahead (0 = flat)
 const BACK = 60                      // frames the camera takes to ease back when Lumi walks (60 = one second)
+// The heroes to choose from: a name and the first of their 3 vox models (standing, left step,
+// right step, in that order). Add a hero by adding 3 models in a row and a line here.
+const HEROES = [{ name: 'Lumi', vox: 0 }, { name: 'Lumo', vox: 8 }]
 const SPIN = 26, SPIN_REST = 10      // frames a spin lasts, and the pause before the next one
 const SPIN_REACH = 1.45              // how close a chest has to be (center to center) to break
 const FULL_TILT = 0.5                // an analog stick at this tilt or more walks at full speed
@@ -59,6 +63,8 @@ let camYaw = 0, camPitch = CAM_PITCH // the way the camera looks: north and down
 let camK = CURVE, looking = false    // the roll (0 while looking around), and whether you are
 let back = null                      // { yaw, pitch, k, t }: the camera easing back to its default view
 let title = true, flash = 0, nearWell = false
+let choosing = false                 // the character select screen, between the title and the game
+let hero = 0, slide = 0              // the chosen hero (index into HEROES), and the carousel easing toward it
 let M, ROOF                          // the observatory and the library roof (copies made by scene_load)
 let props = []                       // { m, corner, fade, most }: every map in the scene but the world
 let close = []                       // the props close to Lumi this frame
@@ -88,6 +94,8 @@ function _init() {
   ticks = 0; won = false; wonT = 0
   let d = load()
   best = d ? d.best : null
+  hero = d && d.hero < HEROES.length ? d.hero : 0      // the last hero chosen
+  slide = hero; choosing = false
   ;[px, py, pz] = SPAWN
   safe = [...SPAWN]
   cam = null; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE; looking = false; back = null
@@ -103,7 +111,13 @@ function solid(x, y, z) { return tile(x, y, z) > 0 }
 function _update() {
   if (flash > 0) flash--
   if (title) {
-    if (btnp(4) || btnp(5)) { title = false; sfx(5) }
+    if (btnp(4) || btnp(5)) { title = false; choosing = true; sfx(6) }
+    return
+  }
+  if (choosing) {                    // left / right turns the carousel, either button starts
+    if (btnp(0)) { hero = (hero + HEROES.length - 1) % HEROES.length; sfx(0) }
+    if (btnp(1)) { hero = (hero + 1) % HEROES.length; sfx(0) }
+    if (btnp(4) || btnp(5)) { choosing = false; sfx(5); keep() }
     return
   }
 
@@ -169,8 +183,8 @@ function _update() {
   if (spinT > 0 && --spinT == 0) spinRest = SPIN_REST
   if ((btnp(4) || btnp(5)) && spinT == 0 && spinRest == 0) {
     spinT = SPIN; spunOnce = true; sfx(15, 1)
-    for (let i = 0; i < 14; i++) {    // a burst of white flecks flung out as the spin starts
-      let a = i / 14 + rnd(0.04), sp = 0.13 + rnd(0.07)
+    for (let i = 0; i < 28; i++) {    // a burst of white flecks flung out as the spin starts
+      let a = i / 28 + rnd(0.02), sp = 0.2 + rnd(0.1)
       bits.push({ x: px + sin(a) * 0.3, y: py - R + 0.3 + rnd(0.7), z: pz + cos(a) * 0.3,
         vx: sin(a) * sp, vy: rnd(0.04) - 0.01, vz: cos(a) * sp, c: 7, s: 0.16 + rnd(0.08), life: 12 + flr(rnd(6)), g: 0, drag: 0.82 })
     }
@@ -245,14 +259,14 @@ function _update() {
   }
 }
 
-// How far round the spin has turned, f from 0 to 1: fast at the start (1.4 times the average
-// rate), slowing to 0.6 times it by the end. Lumi turns 2 x this, the sparkle ring 1.2 x this.
-function spinTurn(f) { return 0.6 * f + 0.4 * (1 - (1 - f) * (1 - f)) }
+// How far round the spin has turned, f from 0 to 1: fast at the start (1.7 times the average
+// rate), slowing to 0.3 times it by the end. The hero turns 2 x this, the sparkle ring 1.2 x this.
+function spinTurn(f) { return 0.3 * f + 0.7 * (1 - (1 - f) * (1 - f)) }
 
 // How far the spin's sparkle stars are from Lumi, f from 0 (spin starts) to 1 (ends): they burst
 // out, overshoot a little and settle (ease-out-back), hold there, then zip back in, faster and faster.
 function sparkleRadius(f) {
-  const RMAX = 1.25, OUT = 0.2, IN = 0.72
+  const RMAX = 1.5, OUT = 0.4, IN = 0.72
   if (f < OUT) {
     let t = f / OUT - 1, c = 2.2
     return RMAX * (1 + (c + 1) * t * t * t + c * t * t)
@@ -314,10 +328,13 @@ function breakChest(c) {
   if (c.has == 'key') keys.push({ x: c.x, y: c.y, z: c.z, pop: 30 })
 }
 
+// save the best time and the hero last chosen
+function keep() { save({ best: best, hero: hero }) }
+
 function win() {
   won = true; wonT = 0; sfx(14, 3)
   let s = ticks / 60
-  if (best == null || s < best) { best = s; save({ best: best }) }
+  if (best == null || s < best) { best = s; keep() }
 }
 
 // where the i-th following star is: on Lumi's path, a little behind her and above the ground
@@ -351,9 +368,40 @@ function seeThrough() {
   }
 }
 
+// The character select screen: the heroes stand on big stars in a row, the chosen one in front,
+// walking in place; the others stand further back, dimmed. The row slides when you choose.
+function drawSelect() {
+  slide = lerp(slide, hero, 0.2)
+  const C = [63.5, 60, 40]                     // high in the sky, away from the world
+  cam_set_curve(0)
+  cam_set_pos([C[0], C[1] + 1.8, C[2] - 4.6])
+  cam_set_lookat([C[0], C[1] + 1.1, C[2]])
+  outline(0)
+  for (let i = 0; i < HEROES.length; i++) {
+    let k = i - slide, near = max(0, 1 - abs(k))
+    let x = C[0] - k * 3.6, z = C[2] + abs(k) * 2.4, y = C[1] + sin(time() * 0.8 + i) * 0.05
+    outline(9, false)
+    vox(3, x, y - 0.2, z, 0.25, time() * 0.1, 0, 2.1)       // a big star to stand on, lying flat
+    outline(0)
+    if (near < 0.5) fillp(0.5, 1)                            // the heroes not chosen, dimmed
+    let frame = near > 0.5 ? [1, 0, 2, 0][flr(time() * 60 / (STEP / 2)) % 4] : 0
+    vox(HEROES[i].vox + frame, x, y + 0.15, z, 0, 0.5 + sin(time() * 0.5 + i) * 0.06, 0, 1.6 + near * 0.4)
+    fillp()
+  }
+  outline()
+  printc('Choose your star-keeper', 22, 10, 1)
+  printc(HEROES[hero].name, 200, 7, 1, 2)
+  if (HEROES.length > 1) {
+    let w = sin(time() * 2) * 2
+    print('<', 14 - w, 112, 7, 1, 2); print('>', 230 + w, 112, 7, 1, 2)
+  }
+  if (time() % 1 < 0.6) printc('Press X to begin', 232, 12, 1)
+}
+
 function fmt(s) { return flr(s / 60) + ':' + ('0' + flr(s % 60)).slice(-2) }
 
 function _draw() {
+  if (choosing) return drawSelect()
   // the camera: fixed, always looking north and down at Lumi, easing after her. On the title
   // card it looks down at the whole observatory, flat. In play the world rolls away ahead.
   if (title) {
@@ -416,7 +464,7 @@ function _draw() {
     vox(7, k.x, y, k.z, 0, time() * 0.5, 0, 0.7 * f)
   }
 
-  // Lumi: spinning, she turns twice round and squashes a little; a ring of sparkles circles her
+  // the hero (Lumi or Lumo): spinning, she turns twice round and squashes a little; a ring of sparkles circles her
   if (!title) {
     let frame = !grounded ? 1 : walk == 0 ? 0 : [1, 0, 2, 0][flr(walk / (STEP / 2)) % 4]
     let yaw = facing, sq = 1, bob = 0
@@ -433,7 +481,7 @@ function _draw() {
     if (spinT > 0) {
       let f = 1 - spinT / SPIN
       yaw = facing + spinTurn(f) * 2; sq = 1 - sin(f * 0.5) * 0.15
-      frame = (spinT >> 1) % 2 && spinT > 2 && f > 0.08 ? 8 : 0   // the smear frame, on and off every 2 frames
+      frame = 0
     }
     let wide = 1.4 / sqrt(sq)                   // keep her volume: taller is thinner
     // her shadow: the same model squashed flat and drawn all black, on the floor below her
@@ -441,10 +489,10 @@ function _draw() {
     if (below < 40) {
       outline()
       for (let i = 0; i < 32; i++) pal(i, 0)
-      vox(frame, px, py - below + 0.03, pz, 0, yaw, 0, wide * 1.05, 0.01, wide * 1.05)
+      vox(HEROES[hero].vox + frame, px, py - below + 0.03, pz, 0, yaw, 0, wide * 1.05, 0.01, wide * 1.05)
       pal(); outline(0)
     }
-    vox(frame, px, py - R + lift + bob, pz, 0, yaw, 0, wide, 1.4 * sq, wide)
+    vox(HEROES[hero].vox + frame, px, py - R + lift + bob, pz, 0, yaw, 0, wide, 1.4 * sq, wide)
     if (spinT > 0) {
       // five sparkle stars circle her the way she turns, a bit slower than she does (fast enough
       // and they'd seem to turn backwards, like wagon wheels on film)

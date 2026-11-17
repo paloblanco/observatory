@@ -25,8 +25,10 @@
 // vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star, 4 chest, 5-6 chest
 //   markers (a mark on top, for the Scene tab), 7 key,
 //   8-10 Lumo (standing, step L, step R): each hero is 3 models in a row, see HEROES
+// map 10: a star door. Place it in the Scene tab and name the placement "star door N": it opens
+//   once N stars are in the Star Well (add a letter for a second door with the same N: "star door 5 b").
 // sounds: 0 footstep, 1 jump (unused), 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
-//   14 win, 15 spin, 16 chest breaks, 17 key; 8-13 the song (Music patterns 0-1)
+//   14 win, 15 spin, 16 chest breaks, 17 key, 18 star door opens; 8-13 the song (Music patterns 0-1)
 
 const R = 0.35                       // Lumi's collision sphere
 const SPAWN = [63.5, 17 + R, 17.5]   // on the little landing islet, looking north at the observatory
@@ -38,6 +40,7 @@ const BACK = 60                      // frames the camera takes to ease back whe
 // The heroes to choose from: a name and the first of their 3 vox models (standing, left step,
 // right step, in that order). Add a hero by adding 3 models in a row and a line here.
 const HEROES = [{ name: 'Lumi', vox: 0 }, { name: 'Lumo', vox: 8 }]
+const DOOR_TIME = 60                 // frames a star door takes to fade away (time stands still meanwhile)
 const SPIN = 26, SPIN_REST = 10      // frames a spin lasts, and the pause before the next one
 const SPIN_REACH = 1.45              // how close a chest has to be (center to center) to break
 const FULL_TILT = 0.5                // an analog stick at this tilt or more walks at full speed
@@ -66,6 +69,7 @@ let title = true, flash = 0, nearWell = false
 let choosing = false                 // the character select screen, between the title and the game
 let hero = 0, slide = 0              // the chosen hero (index into HEROES), and the carousel easing toward it
 let M, ROOF                          // the observatory and the library roof (copies made by scene_load)
+let doors = []                       // { m, need, state: 'shut' | 'opening' | 'open', t, at }: the star doors
 let props = []                       // { m, corner, fade, most }: every map in the scene but the world
 let close = []                       // the props close to Lumi this frame
 let stars = []                       // { x, y, z, state: 'free' | 'carried' | 'flying' | 'home', t }
@@ -84,7 +88,10 @@ function _init() {
   mouse_set_mode(2)                  // the mouse looks around, once captured by a click
   let s = scene_load(0)
   M = s.named.world; ROOF = s.named['library roof']
-  props = s.maps.filter((m) => m != M).map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE }))
+  // star doors: placements named "star door N" open once N stars are in the Star Well
+  doors = Object.entries(s.named).filter(([n]) => /^star door \d+/.test(n))
+    .map(([n, m]) => ({ m, need: +n.match(/\d+/)[0], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5) }))
+  props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m)).map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE }))
   stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z]) => ({ x, y, z, state: 'free', t: 0, pop: 0 }))
   chests = s.things.filter(([v]) => v >= 4 && v <= 6)
     .map(([v, x, y, z]) => ({ x, y, z, has: [null, 'star', 'key'][v - 4], broken: false }))
@@ -102,8 +109,11 @@ function _init() {
   music(0, 2000)
 }
 
+// the maps Lumi can bump into right now: the world, the props near her, and doors still standing
+function solid_maps() { return [M, ...close.map((p) => p.m), ...doors.filter((d) => d.state != 'open').map((d) => d.m)] }
+
 function tile(x, y, z) {
-  for (let m of [M, ...close.map((p) => p.m)]) { let t = mgetw(m, x, y, z)[0]; if (t) return t }
+  for (let m of solid_maps()) { let t = mgetw(m, x, y, z)[0]; if (t) return t }
   return 0
 }
 function solid(x, y, z) { return tile(x, y, z) > 0 }
@@ -168,7 +178,7 @@ function _update() {
 
   // collision: push out of the map, and learn whether we're standing on it
   let was = grounded, fall = vy
-  let [x, y, z, nx, ny, nz, ground] = mpush([M, ...close.map((p) => p.m)], px, py, pz, R)
+  let [x, y, z, nx, ny, nz, ground] = mpush(solid_maps(), px, py, pz, R)
   px = x; py = y; pz = z
   grounded = ground >= 0
   if (grounded && vy < 0) vy = 0
@@ -200,12 +210,7 @@ function _update() {
     }
   }
 
-  // flying bits: wood from chests and sparkles
-  for (let b of bits) {
-    b.x += b.vx; b.y += b.vy; b.z += b.vz; b.vy -= b.g; b.life--
-    if (b.drag) { b.vx *= b.drag; b.vy *= b.drag; b.vz *= b.drag }
-  }
-  bits = bits.filter((b) => b.life > 0)
+  updateBits()
 
   // keys: pop out of a chest, then Lumi picks them up by touching them
   for (let k of keys) if (k.pop > 0) k.pop--
@@ -236,6 +241,11 @@ function _update() {
     if (st.state == 'free' && st.pop == 0 && dist([px, pz], [st.x, st.z]) < 1.1 && abs(py - st.y) < 1.8) {
       st.state = 'carried'; carried.push(st); sfx(6, 3)
     }
+  }
+
+  // star doors: once enough stars are in the well, a door opens as Lumi comes near
+  for (let d of doors) {
+    if (d.state == 'shut' && home >= d.need && dist([px, py, pz], d.at) < 4.5) openDoor(d)
   }
 
   // at the Star Well: every star she carries flies in, one after another
@@ -300,6 +310,31 @@ function floorBelow() {
     if (h[0]) best = min(best, h[7])
   }
   return best
+}
+
+// flying bits: wood from chests, sparkles, dust
+function updateBits() {
+  for (let b of bits) {
+    b.x += b.vx; b.y += b.vy; b.z += b.vz; b.vy -= b.g; b.life--
+    if (b.drag) { b.vx *= b.drag; b.vy *= b.drag; b.vz *= b.drag }
+  }
+  bits = bits.filter((b) => b.life > 0)
+}
+
+// A star door opening: time stops for a second (freeze) while the door fades away in a shower
+// of rising yellow sparkles; then it's gone for good.
+function openDoor(d) {
+  d.state = 'opening'; d.t = 0; sfx(18, 3)
+  freeze(DOOR_TIME, () => {
+    d.t++
+    for (let i = 0; i < 4; i++) {
+      let [x, y, z] = mtow(d.m, rnd(5), rnd(5), rnd(1))
+      bits.push({ x, y, z, vx: rnd(0.04) - 0.02, vy: 0.02 + rnd(0.04), vz: rnd(0.04) - 0.02,
+        c: rnd([10, 10, 9, 23, 7]), s: 0.1 + rnd(0.1), life: 25 + flr(rnd(15)), g: -0.001 })
+    }
+    updateBits()
+    if (d.t >= DOOR_TIME) d.state = 'open'
+  })
 }
 
 // Chests are solid, like a block: push Lumi out sideways (she can't climb onto one).
@@ -425,6 +460,12 @@ function _draw() {
     map(p.m, true)                   // backs too, so a prop the camera is inside still shows (see-through)
     fillp()
   }
+  for (let d of doors) {
+    if (d.state == 'open') continue
+    if (d.state == 'opening') fillp(min(1, d.t / DOOR_TIME), -1)
+    map(d.m)
+    fillp()
+  }
   pal()
 
   // the big star turning over the Star Well; it grows as the stars come home
@@ -524,6 +565,10 @@ function _draw() {
   if (keyCount) print('Keys ' + keyCount, 4, carried.length ? 28 : 16, 23, 1)
   let chestNear = chests.some((c) => !c.broken && dist([px, pz], [c.x, c.z]) < 3)
   if (chestNear && !spunOnce) printc('Press X to spin!', 214, 10, 1)
+  for (let d of doors) {
+    if (d.state == 'shut' && home < d.need && dist([px, py, pz], d.at) < 4.5)
+      printc('Star door: ' + d.need + ' stars needed (' + home + '/' + d.need + ')', 200, 10, 1)
+  }
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
   if (!mouse_locked() && !looking && time() < 25) printc('Stand still, drag to look around', 244, 7, 1)
   if (nearWell && !won && !stars.some((st) => st.state == 'flying')) printc('Bring stars to the Star Well!', 228, 10, 1)

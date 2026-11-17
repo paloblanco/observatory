@@ -1,0 +1,13 @@
+name door
+speed 6 loop 0 0
+# pitch wave volume effect: a rising, shimmering arpeggio as a star door opens
+36 0 4 0
+40 0 4 0
+43 0 4 0
+48 5 5 2
+43 0 4 0
+48 0 4 0
+52 0 5 0
+55 5 5 2
+60 5 5 2
+60 0 3 5

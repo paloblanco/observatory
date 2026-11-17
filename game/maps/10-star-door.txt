@@ -1,0 +1,20 @@
+# map 10 "star door": 5 x 5 x 1 blocks (the size is in cart.json)
+# layers from the bottom (y0) up, each 1 row from back (z0) to front, x0 left to right
+# "." is empty; a layer that isn't here is empty. The legend gives each character's tile.
+# A marble frame around a panel of star tiles, with a gold block in the middle. The scene places it;
+# a placement named "star door N" opens once N stars are in the Star Well.
+legend
+m 5 marble
+s 16 startile
+G 9 gold
+l 13 lamp
+y0
+msssm
+y1
+msssm
+y2
+msGsm
+y3
+msssm
+y4
+mmlmm

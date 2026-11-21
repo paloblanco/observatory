@@ -143,6 +143,97 @@
         0,
         0.5
       ]
+    },
+    {
+      "name": "east island",
+      "size": [
+        40,
+        12,
+        28
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "castle",
+      "size": [
+        15,
+        13,
+        15
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "west island",
+      "size": [
+        48,
+        12,
+        25
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "undercroft",
+      "size": [
+        57,
+        33,
+        29
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "north island",
+      "size": [
+        28,
+        12,
+        34
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "sky tower",
+      "size": [
+        24,
+        46,
+        24
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "final stair",
+      "size": [
+        26,
+        38,
+        37
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
     }
   ],
   "scale": {

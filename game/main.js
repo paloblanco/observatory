@@ -40,6 +40,9 @@ const BACK = 60                      // frames the camera takes to ease back whe
 // The heroes to choose from: a name and the first of their 3 vox models (standing, left step,
 // right step, in that order). Add a hero by adding 3 models in a row and a line here.
 const HEROES = [{ name: 'Lumi', vox: 0 }, { name: 'Lumo', vox: 8 }]
+const WELL_NEED = 70                 // stars in the Star Well that bring the final stair
+const FINAL_TIME = 60                // frames the final stair takes to appear (time stands still meanwhile)
+const FINAL_SIZE = [26, 38, 37]      // the final stair map's size, to pick sparkle spots on it
 const DOOR_TIME = 60                 // frames a star door takes to fade away (time stands still meanwhile)
 const SPIN = 26, SPIN_REST = 10      // frames a spin lasts, and the pause before the next one
 const SPIN_REACH = 1.45              // how close a chest has to be (center to center) to break
@@ -76,7 +79,10 @@ let stars = []                       // { x, y, z, state: 'free' | 'carried' | '
 let carried = []                     // the stars following Lumi, in the order she found them
 let home = 0, goal = 0               // stars in the well, and how many there are
 let path = []                        // Lumi's recent positions, newest first, for the stars to follow
-let ticks = 0, won = false, wonT = 0, best = null
+let ticks = 0, won = false, wonT = 0, best = null, best100 = null   // won: false, 'trophy' or 'diamond'
+let finalState = 'hidden', finalT = 0   // the final stair: 'hidden', 'appearing', 'shown'
+let trophy = null, diamond = null    // { x, y, z, got } from the scene's markers (vox 11 and 12)
+let mFade = 0                        // the main island goes see-through while Lumi is under it
 let spinT = 0, spinRest = 0, spunOnce = false   // the spin: frames left, frames until the next, and whether she has spun yet
 let chests = []                      // { x, y, z, has: null | 'star' | 'key', broken }
 let keys = [], keyCount = 0          // keys lying out ({ x, y, z, pop }), and keys Lumi has
@@ -89,9 +95,16 @@ function _init() {
   let s = scene_load(0)
   M = s.named.world; ROOF = s.named['library roof']
   // star doors: placements named "star door N" open once N stars are in the Star Well
-  doors = Object.entries(s.named).filter(([n]) => /^star door \d+/.test(n))
-    .map(([n, m]) => ({ m, need: +n.match(/\d+/)[0], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5) }))
-  props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m)).map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE }))
+  // star doors: placements named "star door N" open once N stars are in the Star Well. Placements
+  // whose name starts with "final" (the final stair, the 100-star door) stay hidden until WELL_NEED.
+  doors = Object.entries(s.named).filter(([n]) => /star door \d+/.test(n))
+    .map(([n, m]) => ({ m, need: +n.match(/star door (\d+)/)[1], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5), final: n.startsWith('final') }))
+  let FIN = s.named['final stair']
+  props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m))
+    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: m == FIN }))
+  let mark = (v) => s.things.filter((t) => t[0] == v).map(([v, x, y, z]) => ({ x, y, z, got: false }))[0] || null
+  trophy = mark(11); diamond = mark(12)
+  finalState = 'hidden'; finalT = 0; mFade = 0
   stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z]) => ({ x, y, z, state: 'free', t: 0, pop: 0 }))
   chests = s.things.filter(([v]) => v >= 4 && v <= 6)
     .map(([v, x, y, z]) => ({ x, y, z, has: [null, 'star', 'key'][v - 4], broken: false }))
@@ -101,6 +114,7 @@ function _init() {
   ticks = 0; won = false; wonT = 0
   let d = load()
   best = d ? d.best : null
+  best100 = d ? d.best100 : null
   hero = d && d.hero < HEROES.length ? d.hero : 0      // the last hero chosen
   slide = hero; choosing = false
   ;[px, py, pz] = SPAWN
@@ -110,7 +124,10 @@ function _init() {
 }
 
 // the maps Lumi can bump into right now: the world, the props near her, and doors still standing
-function solid_maps() { return [M, ...close.map((p) => p.m), ...doors.filter((d) => d.state != 'open').map((d) => d.m)] }
+function solid_maps() { return [M, ...close.map((p) => p.m), ...doors.filter((d) => d.state != 'open' && there(d)).map((d) => d.m)] }
+
+// is this prop or door in the world yet? (the final ones only once the final stair is shown)
+function there(p) { return !p.final || finalState == 'shown' }
 
 function tile(x, y, z) {
   for (let m of solid_maps()) { let t = mgetw(m, x, y, z)[0]; if (t) return t }
@@ -132,7 +149,7 @@ function _update() {
   }
 
   // the props near enough to touch (measured from each map's corner; the tower is the biggest, 21 blocks)
-  close = props.filter((p) => dist([px, pz], [p.corner[0], p.corner[2]]) < 26)
+  close = props.filter((p) => there(p) && dist([px, pz], [p.corner[0], p.corner[2]]) < 60)
 
   // walking, relative to the way the camera faces: normally north (+z), so up is +z and
   // right on screen is -x; while the camera eases back after looking around, it turns with it
@@ -228,7 +245,7 @@ function _update() {
   // fell off the edge: back to the last safe spot
   if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1) }
 
-  if (!won) ticks++
+  if (won != 'diamond') ticks++
   if (won) wonT++
 
   // Lumi's path, for the stars following her
@@ -244,7 +261,18 @@ function _update() {
   }
 
   // star doors: once enough stars are in the well, a door opens as Lumi comes near
+  // the trophy and the diamond, on the final platform
+  if (finalState == 'shown') {
+    if (trophy && !trophy.got && dist([px, py - R, pz], [trophy.x, trophy.y, trophy.z]) < 1.4) { trophy.got = true; win('trophy') }
+    if (diamond && !diamond.got && dist([px, py - R, pz], [diamond.x, diamond.y, diamond.z]) < 1.6) { diamond.got = true; win('diamond') }
+  }
+
+  // under the main island, it turns see-through so Lumi can be seen
+  let under = py < 12 && dist([px, pz], [WELL[0], WELL[2]]) < 37
+  mFade = lerp(mFade, under ? 0.85 : 0, 0.12)
+
   for (let d of doors) {
+    if (!there(d)) continue
     if (d.state == 'shut' && home >= d.need && dist([px, py, pz], d.at) < 4.5) openDoor(d)
   }
 
@@ -264,7 +292,7 @@ function _update() {
     if (st.state != 'flying') continue
     if (++st.t >= 40) {
       st.state = 'home'; home++; sfx(7, 3)
-      if (home == goal) win()
+      if (home == WELL_NEED) appearFinal()
     }
   }
 }
@@ -363,13 +391,38 @@ function breakChest(c) {
   if (c.has == 'key') keys.push({ x: c.x, y: c.y, z: c.z, pop: 30 })
 }
 
-// save the best time and the hero last chosen
-function keep() { save({ best: best, hero: hero }) }
+// save the best times (to the trophy, and to the diamond) and the hero last chosen
+function keep() { save({ best: best, best100: best100, hero: hero }) }
 
-function win() {
-  won = true; wonT = 0; sfx(14, 3)
+// kind: 'trophy' (the end of the game) or 'diamond' (all 100 stars: the special ending)
+function win(kind) {
+  won = kind; wonT = 0; sfx(14, 3)
   let s = ticks / 60
-  if (best == null || s < best) { best = s; keep() }
+  if (kind == 'trophy' && (best == null || s < best)) best = s
+  if (kind == 'diamond' && (best100 == null || s < best100)) best100 = s
+  keep()
+}
+
+// WELL_NEED stars in the well: the final stair fades in over a second while time stands still,
+// sparkles drifting down onto it (the star door's vanishing, backwards)
+function appearFinal() {
+  finalState = 'appearing'; finalT = 0; sfx(18, 3)
+  let fp = props.find((p) => p.final)
+  freeze(FINAL_TIME, () => {
+    finalT++
+    for (let i = 0; fp && i < 6; i++) {
+      for (let tries = 0; tries < 12; tries++) {           // a random block of the stair
+        let x = flr(rnd(FINAL_SIZE[0])), y = flr(rnd(FINAL_SIZE[1])), z = flr(rnd(FINAL_SIZE[2]))
+        if (!mget(fp.m, x, y, z)) continue
+        let [wx, wy, wz] = mtow(fp.m, x + rnd(1), y + 1, z + rnd(1))
+        bits.push({ x: wx, y: wy + 1.5 + rnd(1.5), z: wz, vx: 0, vy: -0.05 - rnd(0.03), vz: 0,
+          c: rnd([10, 10, 9, 23, 7]), s: 0.1 + rnd(0.1), life: 30 + flr(rnd(10)), g: 0 })
+        break
+      }
+    }
+    updateBits()
+    if (finalT >= FINAL_TIME) finalState = 'shown'
+  })
 }
 
 // where the i-th following star is: on Lumi's path, a little behind her and above the ground
@@ -393,7 +446,7 @@ function seeThrough() {
   let c = [cam[0] - dx * CAM_DIST, cam[1] - dy * CAM_DIST, cam[2] - dz * CAM_DIST]
   for (let p of props) {
     let hit = false
-    if (dist([px, pz], [p.corner[0], p.corner[2]]) < 30) {
+    if (there(p) && dist([px, pz], [p.corner[0], p.corner[2]]) < 60) {
       for (let h of [0.3, 1.3]) {
         let o = [px, py - R + lift + h, pz], v = [c[0] - o[0], c[1] - o[1], c[2] - o[2]], len = dist(o, c)
         if (mray(p.m, ...o, ...v, len + 3)[0]) hit = true    // a little past the camera: inside a prop counts too
@@ -452,19 +505,34 @@ function _draw() {
 
   outline(0)
   if (flash > 0) for (let i = 0; i < 32; i++) pal(i, 7)
+  if (mFade > 0.02) fillp(mFade, -1)
   map(M)
+  fillp()
+  let appear = 1 - finalT / FINAL_TIME     // how see-through the final things still are while appearing
   for (let p of props) {
     if (title) p.fade = 0
+    if (p.final && finalState == 'hidden') continue
     if (p.fade > 0.98) continue      // faded out completely
-    if (p.fade > 0.02) fillp(p.fade, -1)
+    if (p.final && finalState == 'appearing') fillp(appear, -1)
+    else if (p.fade > 0.02) fillp(p.fade, -1)
     map(p.m, true)                   // backs too, so a prop the camera is inside still shows (see-through)
     fillp()
   }
   for (let d of doors) {
-    if (d.state == 'open') continue
+    if (d.state == 'open' || (d.final && finalState == 'hidden')) continue
     if (d.state == 'opening') fillp(min(1, d.t / DOOR_TIME), -1)
+    else if (d.final && finalState == 'appearing') fillp(appear, -1)
     map(d.m)
     fillp()
+  }
+  // the trophy and the diamond, turning slowly over the final platform
+  if (finalState != 'hidden') {
+    if (finalState == 'appearing') fillp(appear, -1)
+    outline(9, false)
+    if (trophy && !trophy.got) vox(11, trophy.x, trophy.y + 0.2 + sin(time() * 0.7) * 0.15, trophy.z, 0, time() * 0.3, 0, 1.8)
+    outline(12, false)
+    if (diamond && !diamond.got) vox(12, diamond.x, diamond.y + 1.3 + sin(time() * 0.6) * 0.2, diamond.z, 0, time() * 0.4, 0, 2.2)
+    outline(0); fillp()
   }
   pal()
 
@@ -554,13 +622,13 @@ function _draw() {
   if (title) {
     printc('Star', 54, 10, 1, 3)
     printc('Observatory', 86, 7, 1, 2)
-    printc('Help Lumi find ' + goal + ' stars', 150, 12, 1)
-    if (best != null) printc('Best ' + fmt(best), 168, 10, 1)
+    printc('Light the Star Well with ' + WELL_NEED + ' stars', 150, 12, 1)
+    if (best != null) printc('Best ' + fmt(best) + (best100 != null ? '   All stars ' + fmt(best100) : ''), 168, 10, 1)
     if (time() % 1 < 0.6) printc('Press X to start', 200, 7, 1)
     return
   }
 
-  print('Stars ' + home + '/' + goal, 4, 4, 10, 1)
+  print('Stars ' + home + '/' + (home < WELL_NEED ? WELL_NEED : goal), 4, 4, 10, 1)
   if (carried.length) print('Carrying ' + carried.length, 4, 16, 7, 1)
   if (keyCount) print('Keys ' + keyCount, 4, carried.length ? 28 : 16, 23, 1)
   let chestNear = chests.some((c) => !c.broken && dist([px, pz], [c.x, c.z]) < 3)
@@ -572,10 +640,18 @@ function _draw() {
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
   if (!mouse_locked() && !looking && time() < 25) printc('Stand still, drag to look around', 244, 7, 1)
   if (nearWell && !won && !stars.some((st) => st.state == 'flying')) printc('Bring stars to the Star Well!', 228, 10, 1)
-  if (won && wonT < 600) {
+  if (won == 'trophy' && wonT < 600) {
     rectfill(28, 92, 227, 156, 1); rect(28, 92, 227, 156, 10)
-    printc('All ' + goal + ' stars!', 100, 10, 1, 2)
-    printc('The observatory shines again', 124, 7, 1)
+    printc('You did it!', 100, 10, 1, 2)
+    printc('The Star Well shines again', 124, 7, 1)
     printc(best == ticks / 60 ? 'New best time! ' + fmt(best) : 'Time ' + fmt(ticks / 60) + '  Best ' + fmt(best), 140, 12, 1)
+  }
+  if (won == 'diamond' && wonT < 900) {
+    rectfill(18, 76, 237, 180, 1); rect(18, 76, 237, 180, 12); rect(20, 78, 235, 178, 10)
+    printc('All ' + goal + ' stars!', 86, 10, 1, 2)
+    printc('You found the Star Diamond!', 112, 12, 1)
+    printc('Every star is home, and the', 130, 7, 1)
+    printc('observatory will never be dark.', 142, 7, 1)
+    printc('Thank you for playing!', 160, 10, 1)
   }
 }

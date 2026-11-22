@@ -1,5 +1,5 @@
-// BLOCKO3D: keeps this game's files on the device so it plays offline (build e8f521e5)
-const CACHE = 'b3d-' + self.registration.scope + '-e8f521e5';
+// BLOCKO3D: keeps this game's files on the device so it plays offline (build 36174301)
+const CACHE = 'b3d-' + self.registration.scope + '-36174301';
 const FILES = ["./","index.html","star-observatory.js","manifest.webmanifest","icon-192.png","icon-512.png"];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

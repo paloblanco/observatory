@@ -1,0 +1,21 @@
+# map 25 "key door": 5 x 5 x 1 blocks (the size is in cart.json)
+# layers from the bottom (y0) up, each 1 rows from back (z0) to front, x0 left to right
+# "." is empty; a layer that isn't here is empty. The legend gives each character's tile.
+# A key door: a metal frame round a brass panel with a keyhole. Name its placement "key door N":
+# it opens once Lumi carries N keys.
+legend
+r 3 rock
+G 9 gold
+l 13 lamp
+b 14 brass
+M 17 metal
+y0
+MbbbM
+y1
+MbrbM
+y2
+MbGbM
+y3
+MbbbM
+y4
+MMlMM

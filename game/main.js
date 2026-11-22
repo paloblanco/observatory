@@ -80,7 +80,15 @@ const STARRY_LINES = [
   "Shh! This is the star library. Every book here is about a different star.",
   "The big mushrooms make a staircase. Walk right up them!",
   "Press X to spin! Chests pop open, rocks go flying, and flowers twirl.",
+  // 9-14: the dancers in the secret room, behind the key door
+  "You found the secret room! Only the bravest star-keepers ever see us dance.",
+  "Five keys, five little locks... and one big secret. Nicely done!",
+  "We dance here every night, so the stars above never forget their song.",
+  "Did you know? Starries are made of the light left over when a star blinks.",
+  "Spin with us! Spinning is the best way to say hello.",
+  "When the Star Well is full, come back and tell us all about it!",
 ]
+const DANCERS = 9                    // Starries whose line is DANCERS or more dance: they bounce high, all the time
 const STARRY_COLORS = [10, 14, 12, 11, 9, 13]   // each Starry's color, by its line number
 const TALK_NEAR = 1.5, TALK_FAR = 3  // a Starry starts talking within TALK_NEAR, and stops past TALK_FAR
 const SKID = 18                      // frames a skid to a stop lasts (cosmetic: a lean forward and a puff of dust)
@@ -129,13 +137,14 @@ function _init() {
   mouse_set_mode(2)                  // the mouse looks around, once captured by a click
   let s = scene_load(0)
   M = s.named.world; ROOF = s.named['library roof']
-  // star doors: placements named "star door N" open once N stars are in the Star Well
   // star doors: placements named "star door N" open once N stars are in the Star Well. Placements
   // whose name starts with "final" (the final stair, the 100-star door) stay hidden until WELL_NEED.
-  doors = Object.entries(s.named).filter(([n]) => /star door \d+/.test(n))
-    .map(([n, m]) => ({ m, need: +n.match(/star door (\d+)/)[1], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5), final: n.startsWith('final') }))
+  // Key doors: placements named "key door N" open once Lumi carries N keys.
+  doors = Object.entries(s.named).filter(([n]) => /(star|key) door \d+/.test(n))
+    .map(([n, m]) => ({ m, kind: n.match(/(star|key) door/)[1], need: +n.match(/door (\d+)/)[1], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5), final: n.startsWith('final'),
+      corner: mtow(m, 0, 0, 0), fade: 0, most: FADE }))   // doors fade like props when they hide Lumi
   // the final pieces: placements named "final ..." (the stair and the platform), hidden until WELL_NEED
-  let FIN = Object.entries(s.named).filter(([n]) => n.startsWith('final') && !/star door/.test(n)).map(([n, m]) => m)
+  let FIN = Object.entries(s.named).filter(([n]) => n.startsWith('final') && !/(star|key) door/.test(n)).map(([n, m]) => m)
   props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m))
     .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m) }))
   let mark = (v) => s.things.filter((t) => t[0] == v).map(([v, x, y, z]) => ({ x, y, z, got: false }))[0] || null
@@ -349,7 +358,7 @@ function _update() {
 
   for (let d of doors) {
     if (!there(d)) continue
-    if (d.state == 'shut' && home >= d.need && dist([px, py, pz], d.at) < 4.5) openDoor(d)
+    if (d.state == 'shut' && (d.kind == 'key' ? keyCount : home) >= d.need && dist([px, py, pz], d.at) < 4.5) openDoor(d)
   }
 
   // at the Star Well: every star she carries flies in, one after another
@@ -641,14 +650,14 @@ function ringSpot(k, n) {
   return [WELL[0] + sin(a) * 2.6, WELL[1] + 3 + cos(time() * 0.4 + k) * 0.3, WELL[2] + cos(a) * 2.6]
 }
 
-// Any prop between the camera and Lumi fades to 70% see-through, the library roof and wall to
+// Any prop (or shut door) between the camera and Lumi fades to 70% see-through, the library roof and wall to
 // nothing (and back when she's clear of it).
 // Two lines of sight, from her feet and from her head: a prop fades only when it blocks both. They run a few
 // blocks past the camera, so a prop the camera is inside (like the hollow library roof) counts.
 function seeThrough() {
   let [dx, dy, dz] = dir3(camYaw, -camPitch)
   let c = [cam[0] - dx * CAM_DIST, cam[1] - dy * CAM_DIST, cam[2] - dz * CAM_DIST]
-  for (let p of props) {
+  for (let p of [...props, ...doors]) {
     let hits = 0
     if (there(p) && dist([px, pz], [p.corner[0], p.corner[2]]) < 60) {
       for (let h of [0.3, 1.3]) {
@@ -727,6 +736,8 @@ function _draw() {
     if (d.state == 'open' || (d.final && finalState == 'hidden')) continue
     if (d.state == 'opening') fillp(min(1, d.t / DOOR_TIME), -1)
     else if (d.final && finalState == 'appearing') fillp(appear, -1)
+    else if (title) d.fade = 0
+    else if (d.fade > 0.02) fillp(d.fade, -1)
     map(d.m)
     fillp()
   }
@@ -778,9 +789,14 @@ function _draw() {
     for (let st of starries) {
       if (abs(st.x - px) > DRAW_NEAR || abs(st.z - pz) > DRAW_NEAR) continue
       let hop = st.spin > 0 ? sin((1 - st.spin / SPIN) * 0.5) * 0.7 : 0   // a little bounce while it twirls
+      let sway = 0
+      if (st.line >= DANCERS) {             // the dancers: a bouncy hop, each to its own beat, and a sway
+        let ph = time() * 1.4 + st.line * 0.37
+        hop = max(hop, abs(sin(ph)) * 0.9); sway = sin(ph * 0.5) * 0.06
+      }
       pal(10, STARRY_COLORS[st.line % STARRY_COLORS.length])
       outline(7, false)                     // a white outline so they stand out
-      vox(15, st.x, st.y + 1.1 + hop + sin(time() * 0.7 + st.x) * 0.12, st.z, 0, st.face, 0, 0.8)
+      vox(15, st.x, st.y + 1.1 + hop + sin(time() * 0.7 + st.x) * 0.12, st.z, 0, st.face + (st.line >= DANCERS ? sway : 0), sway, 0.8)
       outline(0)
       pal()
     }
@@ -884,8 +900,10 @@ function _draw() {
   if (chestNear && !spunOnce && !talker) printc('Press X to spin!', 214, 10, 1)
   for (let d of doors) {
     if (talker) break
-    if (d.state == 'shut' && home < d.need && dist([px, py, pz], d.at) < 4.5)
-      printc('Star door: ' + d.need + ' stars needed (' + home + '/' + d.need + ')', 200, 10, 1)
+    let have = d.kind == 'key' ? keyCount : home
+    if (d.state == 'shut' && have < d.need && dist([px, py, pz], d.at) < 4.5 && !(d.final && finalState == 'hidden'))
+      printc(d.kind == 'key' ? 'Key door: ' + d.need + ' keys needed (' + have + '/' + d.need + ')'
+        : 'Star door: ' + d.need + ' stars needed (' + have + '/' + d.need + ')', 200, d.kind == 'key' ? 23 : 10, 1)
   }
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
   if (!mouse_locked() && !looking && time() < 25 && !talker) printc('Stand still, drag to look around', 244, 7, 1)

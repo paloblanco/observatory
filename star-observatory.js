@@ -5150,6 +5150,8 @@ const STARRY_LINES = [
 ]
 const STARRY_COLORS = [10, 14, 12, 11, 9, 13]   // each Starry's color, by its line number
 const TALK_NEAR = 1.5, TALK_FAR = 3  // a Starry starts talking within TALK_NEAR, and stops past TALK_FAR
+const SKID = 18                      // frames a skid to a stop lasts (cosmetic: a lean forward and a puff of dust)
+const SKID_LEAN = 0.06               // how far she tips forward when she skids (turns; more when running)
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
@@ -5157,6 +5159,7 @@ let px, py, pz, vx = 0, vy = 0, vz = 0
 let grounded = false, lift = 0, safe
 let facing = 0, walk = 0, stepT = -1
 let look = 0, lean = 0               // the way her model faces (easing toward facing), and her lean into turns (roll, in turns)
+let movedFor = 0, skidT = -1, skidRun = false   // frames she's been moving; frames since a skid to a stop (-1: none)
 let running = false, spinHeld = false   // running: the action button held on from a spin
 let cam = null                       // where the camera looks, easing after Lumi
 let camYaw = 0, camPitch = CAM_PITCH // the way the camera looks: north and down, unless you're looking around
@@ -5221,7 +5224,7 @@ function _init() {
   slide = hero; choosing = false
   ;[px, py, pz] = SPAWN
   safe = [...SPAWN]
-  look = 0; lean = 0; running = false; spinHeld = false
+  look = 0; lean = 0; running = false; spinHeld = false; movedFor = 0; skidT = -1
   cam = null; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE; looking = false; back = null
   music(0, 2000)
 }
@@ -5273,6 +5276,14 @@ function _update() {
   let before = look
   look += angdiff(look, facing) * TURN_EASE
   let turning = angdiff(before, look)          // turns this frame; + is toward her left
+
+  // stopping short after walking a bit: she skids (just for show: her movement is unchanged)
+  if (moving) movedFor++
+  else {
+    if (movedFor > 10 && grounded && spinT == 0) skid()
+    movedFor = 0
+  }
+  if (skidT >= 0 && ++skidT > SKID) skidT = -1
   lean = lerp(lean, moving ? mid(-LEAN_MAX, -turning * LEAN * (running ? 1.3 : 1), LEAN_MAX) : 0, 0.3)
 
   // looking around: only while standing still. Walking eases the camera back to its default
@@ -5442,6 +5453,18 @@ function sparkleRadius(f) {
   if (f < IN) return RMAX
   let t = (f - IN) / (1 - IN)
   return RMAX * (1 - t * t * t)
+}
+
+// A skid: she tips forward and a puff of dust flies up in front of her feet.
+function skid() {
+  skidT = 0; skidRun = running
+  let [fx, , fz] = dir3(look), n = running ? 9 : 6
+  for (let i = 0; i < n; i++) {
+    let side = rnd(0.6) - 0.3, sp = 0.03 + rnd(0.04)
+    bits.push({ x: px + fx * 0.45 - fz * side, y: py - R + 0.05, z: pz + fz * 0.45 + fx * side,
+      vx: fx * sp + rnd(0.02) - 0.01, vy: 0.03 + rnd(0.04), vz: fz * sp + rnd(0.02) - 0.01,
+      c: 7, s: 0.12 + rnd(0.08), life: 16 + flr(rnd(8)), g: 0.004, drag: 0.9 })
+  }
 }
 
 // The tile under Lumi's feet (0 if none), from the world and the props near her.
@@ -5883,7 +5906,9 @@ function _draw() {
       vox(HEROES[hero].vox + frame, px, py - below + 0.03, pz, 0, yaw, 0, wide * 1.05, 0.01, wide * 1.05)
       pal(); outline(0)
     }
-    vox(HEROES[hero].vox + frame, px, py - R + lift + bob, pz, 0, yaw, spinT > 0 ? 0 : lean, wide, 1.4 * sq, wide)
+    // a skid: tip forward quickly (over 4 frames), then ease back upright (pitch: - leans forward)
+    let tip = skidT >= 0 && spinT == 0 ? -SKID_LEAN * (skidRun ? 1.4 : 1) * sin(min(1, skidT / 4) * 0.25) * (1 - skidT / SKID) : 0
+    vox(HEROES[hero].vox + frame, px, py - R + lift + bob, pz, tip, yaw, spinT > 0 ? 0 : lean, wide, 1.4 * sq, wide)
     if (spinT > 0) {
       // five sparkle stars circle her the way she turns, a bit slower than she does (fast enough
       // and they'd seem to turn backwards, like wagon wheels on film)

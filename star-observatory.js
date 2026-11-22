@@ -5151,7 +5151,8 @@ const STARRY_LINES = [
 const STARRY_COLORS = [10, 14, 12, 11, 9, 13]   // each Starry's color, by its line number
 const TALK_NEAR = 1.5, TALK_FAR = 3  // a Starry starts talking within TALK_NEAR, and stops past TALK_FAR
 const SKID = 18                      // frames a skid to a stop lasts (cosmetic: a lean forward and a puff of dust)
-const SKID_LEAN = 0.06               // how far she tips forward when she skids (turns; more when running)
+const SKID_LEAN = 0.06               // how far she tips back when she skids (turns; more when running)
+const SKID_TURN = 0.083              // and how far she turns to her left (turns: 0.083 is 30 degrees)
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
@@ -5455,7 +5456,7 @@ function sparkleRadius(f) {
   return RMAX * (1 - t * t * t)
 }
 
-// A skid: she tips forward and a puff of dust flies up in front of her feet.
+// A skid: she swings left and tips back, and a puff of dust flies up in front of her feet.
 function skid() {
   skidT = 0; skidRun = running
   let [fx, , fz] = dir3(look), n = running ? 9 : 6
@@ -5906,8 +5907,13 @@ function _draw() {
       vox(HEROES[hero].vox + frame, px, py - below + 0.03, pz, 0, yaw, 0, wide * 1.05, 0.01, wide * 1.05)
       pal(); outline(0)
     }
-    // a skid: tip forward quickly (over 4 frames), then ease back upright (pitch: - leans forward)
-    let tip = skidT >= 0 && spinT == 0 ? -SKID_LEAN * (skidRun ? 1.4 : 1) * sin(min(1, skidT / 4) * 0.25) * (1 - skidT / SKID) : 0
+    // a skid: she swings 30 degrees to her left and tips back, quickly (over 4 frames), then eases
+    // back (pitch: + tips her back; yaw: + turns her to her left)
+    let tip = 0
+    if (skidT >= 0 && spinT == 0) {
+      let e = sin(min(1, skidT / 4) * 0.25) * (1 - skidT / SKID) * (skidRun ? 1.4 : 1)
+      tip = SKID_LEAN * e; yaw += SKID_TURN * e
+    }
     vox(HEROES[hero].vox + frame, px, py - R + lift + bob, pz, tip, yaw, spinT > 0 ? 0 : lean, wide, 1.4 * sq, wide)
     if (spinT > 0) {
       // five sparkle stars circle her the way she turns, a bit slower than she does (fast enough

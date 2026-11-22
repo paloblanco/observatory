@@ -5514,7 +5514,7 @@ function updateFlowers(moving) {
 }
 
 // Starries: they float in place, turn to look at Lumi when she's near, twirl in her spin,
-// and talk when she comes close: their words appear a letter every other frame.
+// and talk when she comes close: their words appear a letter a frame.
 function updateStarries() {
   for (let st of starries) {
     let d = dist([px, pz], [st.x, st.z])
@@ -5529,11 +5529,10 @@ function updateStarries() {
   let near = starries.filter((st) => dist([px, pz], [st.x, st.z]) < TALK_NEAR && abs(py - R - st.y) < 2)
     .sort((a, b) => dist([px, pz], [a.x, a.z]) - dist([px, pz], [b.x, b.z]))[0]
   if (near && near != talker) { talker = near; talkT = 0 }
-  if (talker) {
-    let before = flr(talkT / 2)
+  if (talker) {                      // a letter a frame; the blip every 6 frames
     talkT++
-    let n = flr(talkT / 2), text = STARRY_LINES[talker.line] || ''
-    if (n != before && n <= text.length && n % 3 == 0 && text[n - 1] != ' ') sfx(22, 3)
+    let text = STARRY_LINES[talker.line] || ''
+    if (talkT <= text.length && talkT % 6 == 0 && text[talkT - 1] != ' ') sfx(22, 3)
   }
 }
 
@@ -5818,8 +5817,11 @@ function _draw() {
   if (!title) {
     for (let st of starries) {
       if (abs(st.x - px) > DRAW_NEAR || abs(st.z - pz) > DRAW_NEAR) continue
+      let hop = st.spin > 0 ? sin((1 - st.spin / SPIN) * 0.5) * 0.7 : 0   // a little bounce while it twirls
       pal(10, STARRY_COLORS[st.line % STARRY_COLORS.length])
-      vox(15, st.x, st.y + 1.1 + sin(time() * 0.7 + st.x) * 0.12, st.z, 0, st.face, 0, 0.8)
+      outline(7, false)                     // a white outline so they stand out
+      vox(15, st.x, st.y + 1.1 + hop + sin(time() * 0.7 + st.x) * 0.12, st.z, 0, st.face, 0, 0.8)
+      outline(0)
       pal()
     }
   }
@@ -5920,9 +5922,9 @@ function _draw() {
   }
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
   if (!mouse_locked() && !looking && time() < 25 && !talker) printc('Stand still, drag to look around', 244, 7, 1)
-  if (talker) {                      // a Starry's words, a letter every other frame
+  if (talker) {                      // a Starry's words, a letter a frame
     let c = STARRY_COLORS[talker.line % STARRY_COLORS.length], text = STARRY_LINES[talker.line] || ''
-    let lines = wrap(text, 32), n = flr(talkT / 2), y0 = 236 - lines.length * 11 - 8
+    let lines = wrap(text, 32), n = talkT, y0 = 236 - lines.length * 11 - 8
     rectfill(10, y0, 245, 238, 1); rect(10, y0, 245, 238, c)
     rectfill(16, y0 - 6, 16 + textw('Starry') + 5, y0 + 4, 1); rect(16, y0 - 6, 16 + textw('Starry') + 5, y0 + 4, c)
     print('Starry', 19, y0 - 4, c)

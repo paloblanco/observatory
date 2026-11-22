@@ -134,9 +134,10 @@ function _init() {
   // whose name starts with "final" (the final stair, the 100-star door) stay hidden until WELL_NEED.
   doors = Object.entries(s.named).filter(([n]) => /star door \d+/.test(n))
     .map(([n, m]) => ({ m, need: +n.match(/star door (\d+)/)[1], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5), final: n.startsWith('final') }))
-  let FIN = s.named['final stair']
+  // the final pieces: placements named "final ..." (the stair and the platform), hidden until WELL_NEED
+  let FIN = Object.entries(s.named).filter(([n]) => n.startsWith('final') && !/star door/.test(n)).map(([n, m]) => m)
   props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m))
-    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: m == FIN }))
+    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m) }))
   let mark = (v) => s.things.filter((t) => t[0] == v).map(([v, x, y, z]) => ({ x, y, z, got: false }))[0] || null
   trophy = mark(11); diamond = mark(12)
   finalState = 'hidden'; finalT = 0; mFade = 0
@@ -609,10 +610,11 @@ function win(kind) {
 // sparkles drifting down onto it (the star door's vanishing, backwards)
 function appearFinal() {
   finalState = 'appearing'; finalT = 0; sfx(18, 3)
-  let fp = props.find((p) => p.final)
+  let fps = props.filter((p) => p.final)
   freeze(FINAL_TIME, () => {
     finalT++
-    for (let i = 0; fp && i < 6; i++) {
+    for (let i = 0; fps.length && i < 6; i++) {
+      let fp = rnd(fps)
       for (let tries = 0; tries < 12; tries++) {           // a random block of the stair
         let x = flr(rnd(FINAL_SIZE[0])), y = flr(rnd(FINAL_SIZE[1])), z = flr(rnd(FINAL_SIZE[2]))
         if (!mget(fp.m, x, y, z)) continue
@@ -641,19 +643,20 @@ function ringSpot(k, n) {
 
 // Any prop between the camera and Lumi fades to 70% see-through, the library roof and wall to
 // nothing (and back when she's clear of it).
-// Two lines of sight, from her feet and from her head, so half-hidden counts too. They run a few
+// Two lines of sight, from her feet and from her head: a prop fades only when it blocks both. They run a few
 // blocks past the camera, so a prop the camera is inside (like the hollow library roof) counts.
 function seeThrough() {
   let [dx, dy, dz] = dir3(camYaw, -camPitch)
   let c = [cam[0] - dx * CAM_DIST, cam[1] - dy * CAM_DIST, cam[2] - dz * CAM_DIST]
   for (let p of props) {
-    let hit = false
+    let hits = 0
     if (there(p) && dist([px, pz], [p.corner[0], p.corner[2]]) < 60) {
       for (let h of [0.3, 1.3]) {
         let o = [px, py - R + lift + h, pz], v = [c[0] - o[0], c[1] - o[1], c[2] - o[2]], len = dist(o, c)
-        if (mray(p.m, ...o, ...v, len + 3)[0]) hit = true    // a little past the camera: inside a prop counts too
+        if (mray(p.m, ...o, ...v, len + 3)[0]) hits++      // a little past the camera: inside a prop counts too
       }
     }
+    let hit = hits == 2                        // only when it hides both her feet and her head
     p.fade = lerp(p.fade, hit ? p.most : 0, 0.15)
   }
 }

@@ -158,7 +158,7 @@
       ]
     },
     {
-      "name": "castle",
+      "name": "castle front",
       "size": [
         15,
         13,
@@ -210,7 +210,7 @@
       ]
     },
     {
-      "name": "sky tower",
+      "name": "sky pillar",
       "size": [
         24,
         46,
@@ -224,6 +224,71 @@
     },
     {
       "name": "final stair",
+      "size": [
+        26,
+        38,
+        37
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "castle back",
+      "size": [
+        15,
+        13,
+        15
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "castle keep",
+      "size": [
+        15,
+        13,
+        15
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "sky stair",
+      "size": [
+        24,
+        46,
+        24
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "sky ring",
+      "size": [
+        24,
+        46,
+        24
+      ],
+      "origin": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "final platform",
       "size": [
         26,
         38,

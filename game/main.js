@@ -369,10 +369,11 @@ function kickDust() {
 }
 
 // How far below Lumi's feet the floor is (for her shadow), looking down in the world and nearby props.
-function floorBelow() {
+// (Lumi's, by default; or any point's, like a flying rock's)
+function floorBelow(x = px, y = py, z = pz) {
   let best = 40
   for (let m of [M, ...close.map((p) => p.m)]) {
-    let h = mray(m, px, py, pz, 0, -1, 0, 40)
+    let h = mray(m, x, y, z, 0, -1, 0, 40)
     if (h[0]) best = min(best, h[7])
   }
   return best
@@ -689,6 +690,15 @@ function _draw() {
     for (let k of rocks) {
       if (abs(k.x - px) > DRAW_NEAR || abs(k.z - pz) > DRAW_NEAR) continue
       vox(14, k.x, k.y, k.z, k.tumble, k.yaw + k.tumble * 0.5, 0)
+      if (k.flying) {                          // a flat black shadow on the floor below a flying rock
+        let below = floorBelow(k.x, k.y + 0.25, k.z)
+        if (below < 40) {
+          outline()
+          for (let i = 0; i < 32; i++) pal(i, 0)
+          vox(14, k.x, k.y + 0.25 - below + 0.03, k.z, 0, k.yaw + k.tumble * 0.5, 0, 1, 0.01, 1)
+          pal(); outline(0)
+        }
+      }
     }
   }
   for (let k of keys) {

@@ -4,7 +4,8 @@
 // Star Well in the middle of the plaza. Bring all 20 to finish.
 //
 // Controls: arrows / WASD / d-pad / stick walk; up is away from the camera (north). X or O
-// spins: Lumi twirls in place, breaking any chest next to her. There's no jump button:
+// spins: Lumi twirls in place, breaking any chest next to her. Keep holding it after the spin
+// to run (RUN times as fast). There's no jump button:
 // walking into a 1-block step climbs it, so stairs just work. Lumi never climbs onto
 // metal or lamps, so rails keep her on the bridges.
 // The camera sits behind and a little above Lumi, looking north and down, and the world
@@ -58,12 +59,17 @@ const DUST = {
   14: [9, 10, 4], 15: [4, 20, 8], 16: [10, 28, 1], 17: [5, 21], 18: [12, 7], 19: [11, 14, 10, 27],
   20: [7, 15, 22], 21: [8, 7, 24], 22: [7, 15], 23: [3, 19, 27],
 }
+const TURN_EASE = 0.4                // how much of the way to her new direction she turns each frame (~4 frames to settle)
+const RUN = 1.5                      // running speed (and step rate) compared with walking
+const LEAN = 1.5, LEAN_MAX = 0.045   // lean into turns: roll per turn of turning per frame, and the most (turns)
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
 let px, py, pz, vx = 0, vy = 0, vz = 0
 let grounded = false, lift = 0, safe
 let facing = 0, walk = 0, stepT = -1
+let look = 0, lean = 0               // the way her model faces (easing toward facing), and her lean into turns (roll, in turns)
+let running = false, spinHeld = false   // running: the action button held on from a spin
 let cam = null                       // where the camera looks, easing after Lumi
 let camYaw = 0, camPitch = CAM_PITCH // the way the camera looks: north and down, unless you're looking around
 let camK = CURVE, looking = false    // the roll (0 while looking around), and whether you are
@@ -119,6 +125,7 @@ function _init() {
   slide = hero; choosing = false
   ;[px, py, pz] = SPAWN
   safe = [...SPAWN]
+  look = 0; lean = 0; running = false; spinHeld = false
   cam = null; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE; looking = false; back = null
   music(0, 2000)
 }
@@ -158,11 +165,19 @@ function _update() {
   let [sx, sy] = stick(0), push = sqrt(sx * sx + sy * sy)
   if (push > 0) { let k = min(push / FULL_TILT, 1) / push; sx *= k; sy *= k }
   let [fx, , fz] = dir3(camYaw)
-  let ax = (fx * -sy - fz * sx) * 0.085, az = (fz * -sy + fx * sx) * 0.085
+  let speed = 0.085 * (running ? RUN : 1)
+  let ax = (fx * -sy - fz * sx) * speed, az = (fz * -sy + fx * sx) * speed
   vx = lerp(vx, ax, 0.3); vz = lerp(vz, az, 0.3)
   let pace = min(push / FULL_TILT, 1)          // 1 at full speed
   let moving = abs(ax) + abs(az) > 0.01
-  if (moving) { facing = yaw_to(ax, az); walk += max(pace, 0.4) } else walk = 0   // slower walking, slower steps
+  if (moving) { facing = yaw_to(ax, az); walk += max(pace, 0.4) * (running ? RUN : 1) } else walk = 0   // slower walking, slower steps
+
+  // her model turns toward the way she's going over a few frames instead of snapping (a d-pad
+  // jumps 90 degrees at once), and leans into the turn while she's walking or running
+  let before = look
+  look += angdiff(look, facing) * TURN_EASE
+  let turning = angdiff(before, look)          // turns this frame; + is toward her left
+  lean = lerp(lean, moving ? mid(-LEAN_MAX, -turning * LEAN * (running ? 1.3 : 1), LEAN_MAX) : 0, 0.3)
 
   // looking around: only while standing still. Walking eases the camera back to its default
   // view, roll and all, over one second (BACK frames).
@@ -208,14 +223,17 @@ function _update() {
   // spinning: X or O. Lumi can still walk while she spins.
   if (spinRest > 0) spinRest--
   if (spinT > 0 && --spinT == 0) spinRest = SPIN_REST
+  // running: keep holding the button after a spin and she runs once the spin is over
+  if (!(btn(4) || btn(5))) spinHeld = false
   if ((btnp(4) || btnp(5)) && spinT == 0 && spinRest == 0) {
-    spinT = SPIN; spunOnce = true; sfx(15, 1)
+    spinT = SPIN; spunOnce = true; spinHeld = true; sfx(15, 1)
     for (let i = 0; i < 28; i++) {    // a burst of white flecks flung out as the spin starts
       let a = i / 28 + rnd(0.02), sp = 0.2 + rnd(0.1)
       bits.push({ x: px + sin(a) * 0.3, y: py - R + 0.3 + rnd(0.7), z: pz + cos(a) * 0.3,
         vx: sin(a) * sp, vy: rnd(0.04) - 0.01, vz: cos(a) * sp, c: 7, s: 0.16 + rnd(0.08), life: 12 + flr(rnd(6)), g: 0, drag: 0.82 })
     }
   }
+  running = spinHeld && spinT == 0
   if (spinT > 0) {
     for (let c of chests) {
       if (!c.broken && dist([px, pz], [c.x, c.z]) < SPIN_REACH + 0.5 && abs(py - R - c.y) < 1.5) breakChest(c)
@@ -576,7 +594,7 @@ function _draw() {
   // the hero (Lumi or Lumo): spinning, she turns twice round and squashes a little; a ring of sparkles circles her
   if (!title) {
     let frame = !grounded ? 1 : walk == 0 ? 0 : [1, 0, 2, 0][flr(walk / (STEP / 2)) % 4]
-    let yaw = facing, sq = 1, bob = 0
+    let yaw = look, sq = 1, bob = 0
     if (walk > 0 && grounded) {
       // walking: her shoulders twist with each stride, and each step is a little hop: squashed as
       // the foot lands, then springing up tall through the middle of the step (not a sine)
@@ -589,7 +607,7 @@ function _draw() {
     }
     if (spinT > 0) {
       let f = 1 - spinT / SPIN
-      yaw = facing + spinTurn(f) * 2; sq = 1 - sin(f * 0.5) * 0.15
+      yaw = look + spinTurn(f) * 2; sq = 1 - sin(f * 0.5) * 0.15
       frame = 0
     }
     let wide = 1.4 / sqrt(sq)                   // keep her volume: taller is thinner
@@ -601,7 +619,7 @@ function _draw() {
       vox(HEROES[hero].vox + frame, px, py - below + 0.03, pz, 0, yaw, 0, wide * 1.05, 0.01, wide * 1.05)
       pal(); outline(0)
     }
-    vox(HEROES[hero].vox + frame, px, py - R + lift + bob, pz, 0, yaw, 0, wide, 1.4 * sq, wide)
+    vox(HEROES[hero].vox + frame, px, py - R + lift + bob, pz, 0, yaw, spinT > 0 ? 0 : lean, wide, 1.4 * sq, wide)
     if (spinT > 0) {
       // five sparkle stars circle her the way she turns, a bit slower than she does (fast enough
       // and they'd seem to turn backwards, like wagon wheels on film)

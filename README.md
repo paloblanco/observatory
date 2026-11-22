@@ -8,6 +8,7 @@ A little BLOCKO3D game: Lumi the star-keeper explores an observatory floating am
 
 - Arrows, WASD, d-pad or stick: walk (up is away from the camera: north, unless you've been looking around)
 - X or O: spin. Lumi twirls in a ring of sparkles and breaks any chest next to her.
+- Keep holding X or O after a spin to run: 1.5 times as fast (`RUN` in `main.js`).
 - Standing still: look around with the mouse (click the game first; Esc frees it), the right stick, or a finger drag. Walking eases the camera back over a second, and Lumi walks relative to the camera as it turns.
 - Enter: pause
 

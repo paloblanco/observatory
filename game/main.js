@@ -25,11 +25,14 @@
 //   there (the goal is every star, loose or in a chest). In the game every chest looks like vox 4.
 // vox: 0 Lumi standing, 1-2 Lumi walking (left foot, right foot), 3 star, 4 chest, 5-6 chest
 //   markers (a mark on top, for the Scene tab), 7 key,
-//   8-10 Lumo (standing, step L, step R): each hero is 3 models in a row, see HEROES
+//   8-10 Lumo (standing, step L, step R): each hero is 3 models in a row, see HEROES; 11 trophy,
+//   12 Star Diamond, 13 flower (sprinkled at random on grass), 14 rock (scene markers: place them
+//   in the Scene tab)
 // map 10: a star door. Place it in the Scene tab and name the placement "star door N": it opens
 //   once N stars are in the Star Well (add a letter for a second door with the same N: "star door 5 b").
 // sounds: 0 footstep, 1 jump (unused), 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
-//   14 win, 15 spin, 16 chest breaks, 17 key, 18 star door opens; 8-13 the song (Music patterns 0-1)
+//   14 win, 15 spin, 16 chest breaks, 17 key, 18 star door opens, 19 flower rustle, 20 rock
+//   flung, 21 rock breaks; 8-13 the song (Music patterns 0-1)
 
 const R = 0.35                       // Lumi's collision sphere
 const SPAWN = [63.5, 17 + R, 17.5]   // on the little landing islet, looking north at the observatory
@@ -62,6 +65,9 @@ const DUST = {
 const TURN_EASE = 0.4                // how much of the way to her new direction she turns each frame (~4 frames to settle)
 const RUN = 1.5                      // running speed (and step rate) compared with walking
 const LEAN = 1.5, LEAN_MAX = 0.045   // lean into turns: roll per turn of turning per frame, and the most (turns)
+const FLOWERS = 160                  // how many flowers to sprinkle over the grass
+const FLOWER_COLORS = [14, 8, 10, 7, 13, 12]   // petal colors (the model's petals are color 14)
+const DRAW_NEAR = 30                 // flowers and rocks further than this from Lumi aren't drawn
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
@@ -91,6 +97,8 @@ let trophy = null, diamond = null    // { x, y, z, got } from the scene's marker
 let mFade = 0                        // the main island goes see-through while Lumi is under it
 let spinT = 0, spinRest = 0, spunOnce = false   // the spin: frames left, frames until the next, and whether she has spun yet
 let chests = []                      // { x, y, z, has: null | 'star' | 'key', broken }
+let flowers = []                     // { x, y, z, c, yaw, shake, spin }: sprinkled on grass at random each game
+let rocks = []                       // { x, y, z, yaw, flying, vx, vy, vz, tumble }: from the scene's rock markers (vox 14)
 let keys = [], keyCount = 0          // keys lying out ({ x, y, z, pop }), and keys Lumi has
 let bits = []                        // flying bits: { x, y, z, vx, vy, vz, c, s, life }
 
@@ -116,6 +124,8 @@ function _init() {
     .map(([v, x, y, z]) => ({ x, y, z, has: [null, 'star', 'key'][v - 4], broken: false }))
   goal = stars.length + chests.filter((c) => c.has == 'star').length
   spinT = 0; spinRest = 0; spunOnce = false; keys = []; keyCount = 0; bits = []
+  rocks = s.things.filter(([v]) => v == 14).map(([v, x, y, z, yaw]) => ({ x, y, z, yaw, flying: false, vx: 0, vy: 0, vz: 0, tumble: 0 }))
+  sprinkleFlowers()
   carried = []; home = 0; path = []
   ticks = 0; won = false; wonT = 0
   let d = load()
@@ -238,6 +248,14 @@ function _update() {
     for (let c of chests) {
       if (!c.broken && dist([px, pz], [c.x, c.z]) < SPIN_REACH + 0.5 && abs(py - R - c.y) < 1.5) breakChest(c)
     }
+    for (let k of rocks) {
+      if (!k.flying && dist([px, pz], [k.x, k.z]) < SPIN_REACH + 0.3 && abs(py - R - k.y) < 1.2) launchRock(k)
+    }
+    for (let f of flowers) {                    // flowers caught in the spin twirl with her
+      if (f.spin == 0 && dist([px, pz], [f.x, f.z]) < SPIN_REACH + 0.5 && abs(py - R - f.y) < 1.2) {
+        f.spin = spinT; petals(f, 10, 0.07)
+      }
+    }
     if (spinT % 2 == 0) {            // a trail of sparkles flung off the spin
       let a = rnd(1)
       bits.push({ x: px + sin(a) * 0.7, y: py - R + 0.4 + rnd(0.8), z: pz + cos(a) * 0.7,
@@ -246,6 +264,8 @@ function _update() {
   }
 
   updateBits()
+  updateFlowers(moving)
+  updateRocks()
 
   // keys: pop out of a chest, then Lumi picks them up by touching them
   for (let k of keys) if (k.pop > 0) k.pop--
@@ -356,6 +376,77 @@ function floorBelow() {
     if (h[0]) best = min(best, h[7])
   }
   return best
+}
+
+// Flowers: sprinkled at random on grass (tile 1) all over, wherever there's room above.
+function sprinkleFlowers() {
+  flowers = []
+  let maps = [M, ...props.filter((p) => !p.final).map((p) => p.m)]
+  for (let tries = 0; tries < FLOWERS * 8 && flowers.length < FLOWERS; tries++) {
+    let x = flr(rnd(140)) - 6 + 0.5, z = flr(rnd(140)) - 6 + 0.5, best = null
+    for (let m of maps) {                      // the highest floor in this column, over every map
+      let h = mray(m, x, 70, z, 0, -1, 0, 120)
+      if (h[0] && (!best || h[7] < best[7])) best = h
+    }
+    if (!best || best[0] != 1) continue        // grass only
+    let y = 70 - best[7]
+    if (dist([x, z], [WELL[0], WELL[2]]) < 9) continue
+    flowers.push({ x: x + rnd(0.5) - 0.25, y, z: z + rnd(0.5) - 0.25, c: rnd(FLOWER_COLORS), yaw: rnd(1), shake: 0, spin: 0 })
+  }
+}
+
+// a few petals (and a leaf or two) flung from a flower
+function petals(f, n, sp) {
+  for (let i = 0; i < n; i++) {
+    let a = rnd(1)
+    bits.push({ x: f.x, y: f.y + 0.35, z: f.z, vx: sin(a) * sp * rnd(1), vy: 0.04 + rnd(0.05), vz: cos(a) * sp * rnd(1),
+      c: i % 3 ? f.c : 11, s: 0.07 + rnd(0.05), life: 20 + flr(rnd(12)), g: 0.006 })
+  }
+}
+
+// Walking or running through a flower shakes it and knocks off a petal or two; spinning
+// next to one sets it twirling along with her.
+function updateFlowers(moving) {
+  for (let f of flowers) {
+    if (f.shake > 0) f.shake--
+    if (f.spin > 0) {
+      f.spin--; f.yaw += 0.09 * (f.spin / SPIN + 0.2)
+      if (f.spin % 4 == 0) petals(f, 1, 0.05)
+    }
+    if (moving && grounded && f.shake == 0 && abs(px - f.x) < 0.55 && abs(pz - f.z) < 0.55 && abs(py - R - f.y) < 0.6) {
+      f.shake = 18; petals(f, 3, 0.03)
+      if (rnd(1) < 0.5) sfx(19, 3)
+    }
+  }
+}
+
+// A rock in a spin's reach bounces away from Lumi; it breaks where it lands.
+function launchRock(k) {
+  let dx = k.x - px, dz = k.z - pz, d = sqrt(dx * dx + dz * dz)
+  if (d < 0.05) { ;[dx, , dz] = dir3(look); d = 1 }
+  k.flying = true; k.vx = dx / d * 0.11; k.vz = dz / d * 0.11; k.vy = 0.2; k.ground = k.y
+  sfx(20, 2)
+}
+
+function updateRocks() {
+  rocks = rocks.filter((k) => {
+    if (!k.flying) return true
+    k.x += k.vx; k.y += k.vy; k.z += k.vz; k.vy -= 0.014; k.tumble += 0.06
+    if (k.y < -40) return false                       // off the edge of the world
+    if (k.vy < 0 && solid(k.x, k.y, k.z)) {          // hit the ground: crumble
+      let top = flr(k.y) + 1
+      for (let i = 0; i < 14; i++) {
+        let a = rnd(1), sp = 0.03 + rnd(0.05)
+        bits.push({ x: k.x, y: top + 0.1, z: k.z, vx: sin(a) * sp, vy: 0.05 + rnd(0.08), vz: cos(a) * sp,
+          c: rnd([5, 6, 13, 21, 22]), s: 0.1 + rnd(0.1), life: 22 + flr(rnd(12)), g: 0.012 })
+      }
+      for (let i = 0; i < 4; i++) bits.push({ x: k.x, y: top + 0.2, z: k.z, vx: rnd(0.03) - 0.015, vy: 0.02,
+        vz: rnd(0.03) - 0.015, c: 6, s: 0.3, life: 18, g: 0 })     // a puff of dust
+      sfx(21, 2)
+      return false
+    }
+    return true
+  })
 }
 
 // flying bits: wood from chests, sparkles, dust
@@ -585,6 +676,21 @@ function _draw() {
 
   // chests, and keys waiting to be picked up
   for (let c of chests) if (!c.broken) vox(4, c.x, c.y, c.z)
+
+  // flowers (shaking when walked through, twirling in a spin) and rocks (tumbling when flung)
+  if (!title) {
+    for (let f of flowers) {
+      if (abs(f.x - px) > DRAW_NEAR || abs(f.z - pz) > DRAW_NEAR) continue
+      let roll = f.shake > 0 ? sin(f.shake * 0.11) * 0.06 * f.shake / 18 : 0
+      pal(14, f.c)
+      vox(13, f.x, f.y, f.z, 0, f.yaw, roll)
+      pal()
+    }
+    for (let k of rocks) {
+      if (abs(k.x - px) > DRAW_NEAR || abs(k.z - pz) > DRAW_NEAR) continue
+      vox(14, k.x, k.y, k.z, k.tumble, k.yaw + k.tumble * 0.5, 0)
+    }
+  }
   for (let k of keys) {
     let f = k.pop > 0 ? 1 - k.pop / 30 : 1
     let y = k.y + 0.4 + (k.pop > 0 ? sin(f * 0.5) * 1.3 : 0.6 + sin(time() * 2) * 0.1)

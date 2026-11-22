@@ -27,12 +27,12 @@
 //   markers (a mark on top, for the Scene tab), 7 key,
 //   8-10 Lumo (standing, step L, step R): each hero is 3 models in a row, see HEROES; 11 trophy,
 //   12 Star Diamond, 13 flower (sprinkled at random on grass), 14 rock (scene markers: place them
-//   in the Scene tab)
+//   in the Scene tab), 15 Starry (scene markers; the marker's yaw picks its line in STARRY_LINES)
 // map 10: a star door. Place it in the Scene tab and name the placement "star door N": it opens
 //   once N stars are in the Star Well (add a letter for a second door with the same N: "star door 5 b").
 // sounds: 0 footstep, 1 jump (unused), 2 land, 3 chime, 4 fall, 5 start, 6 pickup, 7 deliver,
 //   14 win, 15 spin, 16 chest breaks, 17 key, 18 star door opens, 19 flower rustle, 20 rock
-//   flung, 21 rock breaks; 8-13 the song (Music patterns 0-1)
+//   flung, 21 rock breaks, 22 Starry blip; 8-13 the song (Music patterns 0-1)
 
 const R = 0.35                       // Lumi's collision sphere
 const SPAWN = [63.5, 17 + R, 17.5]   // on the little landing islet, looking north at the observatory
@@ -68,6 +68,21 @@ const LEAN = 1.5, LEAN_MAX = 0.045   // lean into turns: roll per turn of turnin
 const FLOWERS = 160                  // how many flowers to sprinkle over the grass
 const FLOWER_COLORS = [14, 8, 10, 7, 13, 12]   // petal colors (the model's petals are color 14)
 const DRAW_NEAR = 30                 // flowers and rocks further than this from Lumi aren't drawn
+// What the Starries say. A Starry marker's yaw (in the Scene tab) picks its line here: yaw 0 says
+// the first, yaw 1 the second, and so on. Words wrap to fit the box.
+const STARRY_LINES = [
+  "Welcome, star-keeper! The stars fell all over the islands. Bring them home to the Star Well!",
+  "Every star you bring makes the Star Well glow. With 70 stars, something wonderful appears!",
+  "Star doors open when the Star Well holds enough stars. Keep collecting!",
+  "This castle is a maze! Climb the walls and look for stars up high.",
+  "There's a grotto under the big island. Follow the stairs all the way down!",
+  "The sky tower is very tall, but every step is small. You can do it!",
+  "Shh! This is the star library. Every book here is about a different star.",
+  "The big mushrooms make a staircase. Walk right up them!",
+  "Press X to spin! Chests pop open, rocks go flying, and flowers twirl.",
+]
+const STARRY_COLORS = [10, 14, 12, 11, 9, 13]   // each Starry's color, by its line number
+const TALK_NEAR = 1.5, TALK_FAR = 3  // a Starry starts talking within TALK_NEAR, and stops past TALK_FAR
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
@@ -99,6 +114,8 @@ let spinT = 0, spinRest = 0, spunOnce = false   // the spin: frames left, frames
 let chests = []                      // { x, y, z, has: null | 'star' | 'key', broken }
 let flowers = []                     // { x, y, z, c, yaw, shake, spin }: sprinkled on grass at random each game
 let rocks = []                       // { x, y, z, yaw, flying, vx, vy, vz, tumble }: from the scene's rock markers (vox 14)
+let starries = []                    // { x, y, z, line, face, spin }: from the scene's Starry markers (vox 15)
+let talker = null, talkT = 0         // the Starry talking to Lumi, and frames since it started
 let keys = [], keyCount = 0          // keys lying out ({ x, y, z, pop }), and keys Lumi has
 let bits = []                        // flying bits: { x, y, z, vx, vy, vz, c, s, life }
 
@@ -124,6 +141,8 @@ function _init() {
     .map(([v, x, y, z]) => ({ x, y, z, has: [null, 'star', 'key'][v - 4], broken: false }))
   goal = stars.length + chests.filter((c) => c.has == 'star').length
   spinT = 0; spinRest = 0; spunOnce = false; keys = []; keyCount = 0; bits = []
+  starries = s.things.filter(([v]) => v == 15).map(([v, x, y, z, yaw]) => ({ x, y, z, line: max(0, Math.round(yaw)), face: 0, spin: 0 }))
+  talker = null; talkT = 0
   rocks = s.things.filter(([v]) => v == 14).map(([v, x, y, z, yaw]) => ({ x, y, z, yaw, flying: false, vx: 0, vy: 0, vz: 0, tumble: 0 }))
   sprinkleFlowers()
   carried = []; home = 0; path = []
@@ -251,6 +270,11 @@ function _update() {
     for (let k of rocks) {
       if (!k.flying && dist([px, pz], [k.x, k.z]) < SPIN_REACH + 0.3 && abs(py - R - k.y) < 1.2) launchRock(k)
     }
+    for (let st of starries) {                  // Starries twirl along too
+      if (st.spin == 0 && dist([px, pz], [st.x, st.z]) < SPIN_REACH + 0.5 && abs(py - R - st.y) < 2) {
+        st.spin = spinT; sparkle(st.x, st.y + 1.1, st.z, 8)
+      }
+    }
     for (let f of flowers) {                    // flowers caught in the spin twirl with her
       if (f.spin == 0 && dist([px, pz], [f.x, f.z]) < SPIN_REACH + 0.5 && abs(py - R - f.y) < 1.2) {
         f.spin = spinT; petals(f, 10, 0.07)
@@ -266,6 +290,7 @@ function _update() {
   updateBits()
   updateFlowers(moving)
   updateRocks()
+  updateStarries()
 
   // keys: pop out of a chest, then Lumi picks them up by touching them
   for (let k of keys) if (k.pop > 0) k.pop--
@@ -419,6 +444,50 @@ function updateFlowers(moving) {
       if (rnd(1) < 0.5) sfx(19, 3)
     }
   }
+}
+
+// Starries: they float in place, turn to look at Lumi when she's near, twirl in her spin,
+// and talk when she comes close: their words appear a letter every other frame.
+function updateStarries() {
+  for (let st of starries) {
+    let d = dist([px, pz], [st.x, st.z])
+    if (st.spin > 0) {
+      st.spin--; st.face += 0.09 * (st.spin / SPIN + 0.2)
+      if (st.spin % 4 == 0) sparkle(st.x, st.y + 1.1, st.z, 1)
+    } else if (d < 5 && abs(py - R - st.y) < 3) {
+      st.face += angdiff(st.face, yaw_to(px - st.x, pz - st.z)) * 0.15
+    }
+  }
+  if (talker && (dist([px, pz], [talker.x, talker.z]) > TALK_FAR || abs(py - R - talker.y) > 3)) talker = null
+  let near = starries.filter((st) => dist([px, pz], [st.x, st.z]) < TALK_NEAR && abs(py - R - st.y) < 2)
+    .sort((a, b) => dist([px, pz], [a.x, a.z]) - dist([px, pz], [b.x, b.z]))[0]
+  if (near && near != talker) { talker = near; talkT = 0 }
+  if (talker) {
+    let before = flr(talkT / 2)
+    talkT++
+    let n = flr(talkT / 2), text = STARRY_LINES[talker.line] || ''
+    if (n != before && n <= text.length && n % 3 == 0 && text[n - 1] != ' ') sfx(22, 3)
+  }
+}
+
+// a little burst of star-colored sparkles
+function sparkle(x, y, z, n) {
+  for (let i = 0; i < n; i++) {
+    let a = rnd(1)
+    bits.push({ x, y, z, vx: sin(a) * 0.04, vy: 0.01 + rnd(0.04), vz: cos(a) * 0.04,
+      c: rnd([10, 23, 7, 12]), s: 0.08 + rnd(0.06), life: 20 + flr(rnd(10)), g: 0 })
+  }
+}
+
+// words wrapped into lines of at most w characters
+function wrap(text, w) {
+  let lines = [''], words = text.split(' ')
+  for (let wd of words) {
+    let cur = lines[lines.length - 1]
+    if (cur.length && cur.length + 1 + wd.length > w) lines.push(wd)
+    else lines[lines.length - 1] = cur.length ? cur + ' ' + wd : wd
+  }
+  return lines
 }
 
 // A rock in a spin's reach bounces away from Lumi; it breaks where it lands.
@@ -678,6 +747,16 @@ function _draw() {
   // chests, and keys waiting to be picked up
   for (let c of chests) if (!c.broken) vox(4, c.x, c.y, c.z)
 
+  // Starries, floating and bobbing, each in its own color
+  if (!title) {
+    for (let st of starries) {
+      if (abs(st.x - px) > DRAW_NEAR || abs(st.z - pz) > DRAW_NEAR) continue
+      pal(10, STARRY_COLORS[st.line % STARRY_COLORS.length])
+      vox(15, st.x, st.y + 1.1 + sin(time() * 0.7 + st.x) * 0.12, st.z, 0, st.face, 0, 0.8)
+      pal()
+    }
+  }
+
   // flowers (shaking when walked through, twirling in a spin) and rocks (tumbling when flung)
   if (!title) {
     for (let f of flowers) {
@@ -766,14 +845,26 @@ function _draw() {
   if (carried.length) print('Carrying ' + carried.length, 4, 16, 7, 1)
   if (keyCount) print('Keys ' + keyCount, 4, carried.length ? 28 : 16, 23, 1)
   let chestNear = chests.some((c) => !c.broken && dist([px, pz], [c.x, c.z]) < 3)
-  if (chestNear && !spunOnce) printc('Press X to spin!', 214, 10, 1)
+  if (chestNear && !spunOnce && !talker) printc('Press X to spin!', 214, 10, 1)
   for (let d of doors) {
+    if (talker) break
     if (d.state == 'shut' && home < d.need && dist([px, py, pz], d.at) < 4.5)
       printc('Star door: ' + d.need + ' stars needed (' + home + '/' + d.need + ')', 200, 10, 1)
   }
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
-  if (!mouse_locked() && !looking && time() < 25) printc('Stand still, drag to look around', 244, 7, 1)
-  if (nearWell && !won && !stars.some((st) => st.state == 'flying')) printc('Bring stars to the Star Well!', 228, 10, 1)
+  if (!mouse_locked() && !looking && time() < 25 && !talker) printc('Stand still, drag to look around', 244, 7, 1)
+  if (talker) {                      // a Starry's words, a letter every other frame
+    let c = STARRY_COLORS[talker.line % STARRY_COLORS.length], text = STARRY_LINES[talker.line] || ''
+    let lines = wrap(text, 32), n = flr(talkT / 2), y0 = 236 - lines.length * 11 - 8
+    rectfill(10, y0, 245, 238, 1); rect(10, y0, 245, 238, c)
+    rectfill(16, y0 - 6, 16 + textw('Starry') + 5, y0 + 4, 1); rect(16, y0 - 6, 16 + textw('Starry') + 5, y0 + 4, c)
+    print('Starry', 19, y0 - 4, c)
+    for (let i = 0; i < lines.length && n > 0; i++) {
+      print(lines[i].slice(0, n), 16, y0 + 8 + i * 11, 7)
+      n -= lines[i].length + 1
+    }
+  }
+  if (nearWell && !won && !talker && !stars.some((st) => st.state == 'flying')) printc('Bring stars to the Star Well!', 228, 10, 1)
   if (won == 'trophy' && wonT < 600) {
     rectfill(28, 92, 227, 156, 1); rect(28, 92, 227, 156, 10)
     printc('You did it!', 100, 10, 1, 2)

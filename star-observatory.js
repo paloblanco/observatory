@@ -5115,6 +5115,8 @@ const WELL_NEED = 70                 // stars in the Star Well that bring the fi
 const FINAL_TIME = 60                // frames the final stair takes to appear (time stands still meanwhile)
 const FINAL_SIZE = [26, 38, 37]      // the final stair map's size, to pick sparkle spots on it
 const DOOR_TIME = 60                 // frames a star door takes to fade away (time stands still meanwhile)
+const FOCUS_MOVE = 0.3               // during those freezes the camera swings to the door (or the stair's foot) and
+                                     // back: this part of the freeze going there, the same coming back, holding between
 const SPIN = 26, SPIN_REST = 10      // frames a spin lasts, and the pause before the next one
 const SPIN_REACH = 1.45              // how close a chest has to be (center to center) to break
 const FULL_TILT = 0.5                // an analog stick at this tilt or more walks at full speed
@@ -5171,6 +5173,8 @@ let look = 0, lean = 0               // the way her model faces (easing toward f
 let movedFor = 0, skidT = -1, skidRun = false   // frames she's been moving; frames since a skid to a stop (-1: none)
 let running = false, spinHeld = false   // running: the action button held on from a spin
 let cam = null                       // where the camera looks, easing after Lumi
+let camAt = null                     // where the camera actually looks: cam, or swung toward focus
+let focus = null                     // { at, t, n }: during a freeze, a spot the camera swings to (frame t of n)
 let camYaw = 0, camPitch = CAM_PITCH // the way the camera looks: north and down, unless you're looking around
 let camK = CURVE, looking = false    // the roll (0 while looking around), and whether you are
 let back = null                      // { yaw, pitch, k, t }: the camera easing back to its default view
@@ -5215,7 +5219,7 @@ function _init() {
   // the final pieces: placements named "final ..." (the stair and the platform), hidden until WELL_NEED
   let FIN = Object.entries(s.named).filter(([n]) => n.startsWith('final') && !/(star|key) door/.test(n)).map(([n, m]) => m)
   props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m || d.cover == m))
-    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m) }))
+    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m), stair: m == s.named['final stair'] }))
   let mark = (v) => s.things.filter((t) => t[0] == v).map(([v, x, y, z]) => ({ x, y, z, got: false }))[0] || null
   trophy = mark(11); diamond = mark(12)
   finalState = 'hidden'; finalT = 0; mFade = 0
@@ -5238,7 +5242,7 @@ function _init() {
   ;[px, py, pz] = SPAWN
   safe = [...SPAWN]
   look = 0; lean = 0; running = false; spinHeld = false; movedFor = 0; skidT = -1
-  cam = null; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE; looking = false; back = null
+  cam = null; focus = null; camYaw = 0; camPitch = CAM_PITCH; camK = CURVE; looking = false; back = null
   music(0, 2000)
 }
 
@@ -5634,15 +5638,16 @@ function updateBits() {
 // of rising yellow sparkles; then it's gone for good.
 function openDoor(d) {
   d.state = 'opening'; d.t = 0; sfx(18, 3)
+  focus = { at: mtow(d.m, 2.5, 0, 0.5), t: 0, n: DOOR_TIME }     // the foot of the door
   freeze(DOOR_TIME, () => {
-    d.t++
+    d.t++; focus.t = d.t
     for (let i = 0; i < 4; i++) {
       let [x, y, z] = mtow(d.m, rnd(5), rnd(5), rnd(1))
       bits.push({ x, y, z, vx: rnd(0.04) - 0.02, vy: 0.02 + rnd(0.04), vz: rnd(0.04) - 0.02,
         c: rnd([10, 10, 9, 23, 7]), s: 0.1 + rnd(0.1), life: 25 + flr(rnd(15)), g: -0.001 })
     }
     updateBits()
-    if (d.t >= DOOR_TIME) d.state = 'open'
+    if (d.t >= DOOR_TIME) { d.state = 'open'; focus = null }
   })
 }
 
@@ -5684,13 +5689,24 @@ function win(kind) {
   keep()
 }
 
+// The foot of the final stair: the middle of its lowest step, where the camera swings while it appears.
+function stairFoot() {
+  let m = props.find((p) => p.final && p.stair), low = null
+  if (!m) return [px, py, pz]
+  for (let y = 0; y < FINAL_SIZE[1] && !low; y++)
+    for (let z = 0; z < FINAL_SIZE[2]; z++) for (let x = 0; x < FINAL_SIZE[0]; x++)
+      if (mget(m.m, x, y, z)) { low = low || []; low.push(mtow(m.m, x + 0.5, y + 1, z + 0.5)) }
+  return low.reduce((a, b) => [a[0] + b[0] / low.length, a[1] + b[1] / low.length, a[2] + b[2] / low.length], [0, 0, 0])
+}
+
 // WELL_NEED stars in the well: the final stair fades in over a second while time stands still,
 // sparkles drifting down onto it (the star door's vanishing, backwards)
 function appearFinal() {
   finalState = 'appearing'; finalT = 0; sfx(18, 3)
   let fps = props.filter((p) => p.final)
+  focus = { at: stairFoot(), t: 0, n: FINAL_TIME }
   freeze(FINAL_TIME, () => {
-    finalT++
+    finalT++; focus.t = finalT
     for (let i = 0; fps.length && i < 6; i++) {
       let fp = rnd(fps)
       for (let tries = 0; tries < 12; tries++) {           // a random block of the stair
@@ -5703,7 +5719,7 @@ function appearFinal() {
       }
     }
     updateBits()
-    if (finalT >= FINAL_TIME) finalState = 'shown'
+    if (finalT >= FINAL_TIME) { finalState = 'shown'; focus = null }
   })
 }
 
@@ -5725,7 +5741,7 @@ function ringSpot(k, n) {
 // blocks past the camera, so a prop the camera is inside (like the hollow library roof) counts.
 function seeThrough() {
   let [dx, dy, dz] = dir3(camYaw, -camPitch)
-  let c = [cam[0] - dx * CAM_DIST, cam[1] - dy * CAM_DIST, cam[2] - dz * CAM_DIST]
+  let c = [camAt[0] - dx * CAM_DIST, camAt[1] - dy * CAM_DIST, camAt[2] - dz * CAM_DIST]
   for (let p of [...props, ...doors]) {
     let hits = 0
     if (there(p) && dist([px, pz], [p.corner[0], p.corner[2]]) < 60) {
@@ -5780,9 +5796,14 @@ function _draw() {
     cam_orbit([63.5, 22, 63.5], time() * 0.015, -0.11, 76)
   } else {
     let t = [px, py + 0.6 + lift, pz]
-    cam = cam ? lerp(cam, t, 0.15) : t
+    if (focus) {                          // a freeze: swing to the spot, hold, and swing back to Lumi
+      let u = focus.t / focus.n, w = min(1, u / FOCUS_MOVE, (1 - u) / FOCUS_MOVE)
+      w = w * w * (3 - 2 * w)               // smoothstep: ease in and out
+      cam = cam ? lerp(cam, t, 0.15) : t   // (still easing after Lumi underneath, so the return is seamless)
+      camAt = lerp(cam, [focus.at[0], focus.at[1] + 0.6, focus.at[2]], w)
+    } else camAt = cam = cam ? lerp(cam, t, 0.15) : t
     cam_set_curve(camK)
-    cam_orbit(cam, camYaw, -camPitch, CAM_DIST)
+    cam_orbit(camAt, camYaw, -camPitch, CAM_DIST)
     seeThrough()
   }
 

@@ -140,12 +140,14 @@ function _init() {
   // star doors: placements named "star door N" open once N stars are in the Star Well. Placements
   // whose name starts with "final" (the final stair, the 100-star door) stay hidden until WELL_NEED.
   // Key doors: placements named "key door N" open once Lumi carries N keys.
-  doors = Object.entries(s.named).filter(([n]) => /(star|key) door \d+/.test(n))
+  // A placement named after a door plus " cover" ("key door 5 cover") is solid and drawn while that door
+  // is shut, and fades away with it: walls and a roof to keep a secret.
+  doors = Object.entries(s.named).filter(([n]) => /(star|key) door \d+/.test(n) && !/ cover$/.test(n))
     .map(([n, m]) => ({ m, kind: n.match(/(star|key) door/)[1], need: +n.match(/door (\d+)/)[1], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5), final: n.startsWith('final'),
-      corner: mtow(m, 0, 0, 0), fade: 0, most: FADE }))   // doors fade like props when they hide Lumi
+      corner: mtow(m, 0, 0, 0), fade: 0, most: FADE, cover: s.named[n + ' cover'] }))   // doors fade like props when they hide Lumi
   // the final pieces: placements named "final ..." (the stair and the platform), hidden until WELL_NEED
   let FIN = Object.entries(s.named).filter(([n]) => n.startsWith('final') && !/(star|key) door/.test(n)).map(([n, m]) => m)
-  props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m))
+  props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m || d.cover == m))
     .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m) }))
   let mark = (v) => s.things.filter((t) => t[0] == v).map(([v, x, y, z]) => ({ x, y, z, got: false }))[0] || null
   trophy = mark(11); diamond = mark(12)
@@ -174,7 +176,7 @@ function _init() {
 }
 
 // the maps Lumi can bump into right now: the world, the props near her, and doors still standing
-function solid_maps() { return [M, ...close.map((p) => p.m), ...doors.filter((d) => d.state != 'open' && there(d)).map((d) => d.m)] }
+function solid_maps() { return [M, ...close.map((p) => p.m), ...doors.filter((d) => d.state != 'open' && there(d)).flatMap((d) => d.cover != null ? [d.m, d.cover] : [d.m])] }
 
 // is this prop or door in the world yet? (the final ones only once the final stair is shown)
 function there(p) { return !p.final || finalState == 'shown' }
@@ -736,8 +738,9 @@ function _draw() {
     if (d.state == 'open' || (d.final && finalState == 'hidden')) continue
     if (d.state == 'opening') fillp(min(1, d.t / DOOR_TIME), -1)
     else if (d.final && finalState == 'appearing') fillp(appear, -1)
-    else if (title) d.fade = 0
-    else if (d.fade > 0.02) fillp(d.fade, -1)
+    if (d.cover != null) map(d.cover, true)   // the cover fades with the door, but never for sightlines
+    if (title) d.fade = 0
+    else if (d.state == 'shut' && d.fade > 0.02) fillp(d.fade, -1)
     map(d.m)
     fillp()
   }

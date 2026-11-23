@@ -50,6 +50,9 @@ const FINAL_SIZE = [26, 38, 37]      // the final stair map's size, to pick spar
 const BEAM_HIDE = 12, BEAM_SHOW = 15 // a waiting star's beam fades out within BEAM_HIDE of Lumi, back in past BEAM_SHOW
 const POP = 30, POP_HIGH = 1.8         // a star or key from a chest: frames it bounces (it can't be picked up
                                      // until it lands), and how high it goes
+const HARD_FALL = 5                  // a drop of at least this many blocks lands hard: a thud, a ring of dust,
+const HARD_STUN = 20                 // and this many frames before she can move again
+const END_HOLD = 40                  // an ending's notice: time stands still this long, then until O or X is pressed
 const DOOR_TIME = 60                 // frames a star door takes to fade away (time stands still meanwhile)
 const FOCUS_MOVE = 0.3               // during those freezes the camera swings to the door (or the stair's foot) and
                                      // back: this part of the freeze going there, the same coming back, holding between
@@ -125,6 +128,8 @@ let stars = []                       // { x, y, z, state: 'free' | 'carried' | '
 let carried = []                     // the stars following Lumi, in the order she found them
 let home = 0, goal = 0               // stars in the well, and how many there are
 let path = []                        // Lumi's recent positions, newest first, for the stars to follow
+let airTop = 0, stun = 0             // the highest she's been since leaving the ground; frames left of a hard landing
+let ending = false, endT = 0         // an ending's notice is up (the game is frozen until a button), and for how long
 let ticks = 0, won = false, wonT = 0, best = null, best100 = null   // won: false, 'trophy' or 'diamond'
 let finalState = 'hidden', finalT = 0   // the final stair: 'hidden', 'appearing', 'shown'
 let trophy = null, diamond = null    // { x, y, z, got } from the scene's markers (vox 11 and 12)
@@ -169,7 +174,7 @@ function _init() {
   rocks = s.things.filter(([v]) => v == 14).map(([v, x, y, z, yaw]) => ({ x, y, z, yaw, flying: false, vx: 0, vy: 0, vz: 0, tumble: 0 }))
   sprinkleFlowers()
   carried = []; home = 0; path = []
-  ticks = 0; won = false; wonT = 0
+  ticks = 0; won = false; wonT = 0; ending = false; stun = 0; airTop = SPAWN[1]
   let d = load()
   best = d ? d.best : null
   best100 = d ? d.best100 : null
@@ -214,7 +219,8 @@ function _update() {
   // right on screen is -x; while the camera eases back after looking around, it turns with it
   // An analog stick reaches full speed at half tilt (FULL_TILT), so a thumb on a phone's circle
   // doesn't have to reach the rim; less than that walks slower. Digital input is always full.
-  let [sx, sy] = stick(0), push = sqrt(sx * sx + sy * sy)
+  if (stun > 0) stun--
+  let [sx, sy] = stun > 0 ? [0, 0] : stick(0), push = sqrt(sx * sx + sy * sy)   // no control just after a hard landing
   if (push > 0) { let k = min(push / FULL_TILT, 1) / push; sx *= k; sy *= k }
   let [fx, , fz] = dir3(camYaw)
   let speed = 0.085 * (running ? RUN : 1)
@@ -275,7 +281,9 @@ function _update() {
   grounded = ground >= 0
   if (grounded && vy < 0) vy = 0
   if (ny < -0.5 && vy > 0) vy = 0                // bumped a ceiling
-  if (grounded && !was && fall < -0.15) sfx(2, 1)
+  if (grounded && !was && airTop - py >= HARD_FALL) hardLand()
+  else if (grounded && !was && fall < -0.15) sfx(2, 1)
+  airTop = grounded ? py : max(airTop, py)
 
   pushChests()
 
@@ -284,7 +292,7 @@ function _update() {
   if (spinT > 0 && --spinT == 0) spinRest = SPIN_REST
   // running: keep holding the button after a spin and she runs once the spin is over
   if (!(btn(4) || btn(5))) spinHeld = false
-  if ((btnp(4) || btnp(5)) && spinT == 0 && spinRest == 0) {
+  if ((btnp(4) || btnp(5)) && spinT == 0 && spinRest == 0 && stun == 0) {
     spinT = SPIN; spunOnce = true; spinHeld = true; sfx(15, 1)
     for (let i = 0; i < 28; i++) {    // a burst of white flecks flung out as the spin starts
       let a = i / 28 + rnd(0.02), sp = 0.2 + rnd(0.1)
@@ -337,7 +345,7 @@ function _update() {
 
   // fell off the edge: back to where she picked up her last star or last walked through an open
   // door, whichever was later (or the start, before either)
-  if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1) }
+  if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1); airTop = py }
 
   if (won != 'diamond') ticks++
   if (won) wonT++
@@ -428,6 +436,17 @@ function skid() {
     bits.push({ x: px + fx * 0.45 - fz * side, y: py - R + 0.05, z: pz + fz * 0.45 + fx * side,
       vx: fx * sp + rnd(0.02) - 0.01, vy: 0.03 + rnd(0.04), vz: fz * sp + rnd(0.02) - 0.01,
       c: 7, s: 0.12 + rnd(0.08), life: 16 + flr(rnd(8)), g: 0.004, drag: 0.9 })
+  }
+}
+
+// Landing from HARD_FALL or higher: a thud, a ring of white dust round her feet, and a moment
+// (HARD_STUN frames) before she can walk or spin again.
+function hardLand() {
+  sfx(23, 1); stun = HARD_STUN; vx = vz = 0
+  for (let i = 0; i < 24; i++) {
+    let a = i / 24, sp = 0.16 + rnd(0.04)
+    bits.push({ x: px + sin(a) * 0.4, y: py - R + 0.3, z: pz + cos(a) * 0.4,
+      vx: sin(a) * sp, vy: 0.03 + rnd(0.02), vz: cos(a) * sp, c: 7, s: 0.2 + rnd(0.1), life: 22 + flr(rnd(8)), g: 0.003, drag: 0.9 })
   }
 }
 
@@ -634,6 +653,15 @@ function keep() { save({ best: best, best100: best100, hero: hero }) }
 // kind: 'trophy' (the end of the game) or 'diamond' (all 100 stars: the special ending)
 function win(kind) {
   won = kind; wonT = 0; sfx(14, 3)
+  // the notice: time stands still for END_HOLD frames, and then keeps standing still (freeze again,
+  // END_HOLD at a time) until a fresh press of O or X
+  ending = true; endT = 0
+  let hold = () => {
+    updateBits()
+    if (++endT > END_HOLD && (btnp(4) || btnp(5))) { ending = false; freeze(0); sfx(6); return }
+    if (endT % END_HOLD == 0) freeze(END_HOLD, hold)
+  }
+  freeze(END_HOLD, hold)
   let s = ticks / 60
   if (kind == 'trophy' && (best == null || s < best)) best = s
   if (kind == 'diamond' && (best100 == null || s < best100)) best100 = s
@@ -950,7 +978,7 @@ function _draw() {
         : 'Star door: ' + d.need + ' stars needed (' + have + '/' + d.need + ')', 200, d.kind == 'key' ? 23 : 10, 1)
   }
   print(fmt(ticks / 60), 252 - textw(fmt(ticks / 60)), 4, 7, 1)
-  if (!mouse_locked() && !looking && time() < 25 && !talker) printc('Stand still, drag to look around', 244, 7, 1)
+  if (!mouse_locked() && !looking && time() < 25 && !talker && !ending) printc('Stand still, drag to look around', 244, 7, 1)
   if (talker) {                      // a Starry's words, a letter a frame
     let c = STARRY_COLORS[talker.line % STARRY_COLORS.length], text = STARRY_LINES[talker.line] || ''
     let lines = wrap(text, 32), n = talkT, y0 = 236 - lines.length * 11 - 8
@@ -963,18 +991,20 @@ function _draw() {
     }
   }
   if (nearWell && !won && !talker && !stars.some((st) => st.state == 'flying')) printc('Bring stars to the Star Well!', 228, 10, 1)
-  if (won == 'trophy' && wonT < 600) {
+  if (won == 'trophy' && ending) {
     rectfill(28, 92, 227, 156, 1); rect(28, 92, 227, 156, 10)
     printc('You did it!', 100, 10, 1, 2)
     printc('The Star Well shines again', 124, 7, 1)
     printc(best == ticks / 60 ? 'New best time! ' + fmt(best) : 'Time ' + fmt(ticks / 60) + '  Best ' + fmt(best), 140, 12, 1)
+    if (endT > END_HOLD && time() % 1 < 0.6) printc('Press X to continue', 166, 7, 1)
   }
-  if (won == 'diamond' && wonT < 900) {
+  if (won == 'diamond' && ending) {
     rectfill(18, 76, 237, 180, 1); rect(18, 76, 237, 180, 12); rect(20, 78, 235, 178, 10)
     printc('All ' + goal + ' stars!', 86, 10, 1, 2)
     printc('You found the Star Diamond!', 112, 12, 1)
     printc('Every star is home, and the', 130, 7, 1)
     printc('observatory will never be dark.', 142, 7, 1)
     printc('Thank you for playing!', 160, 10, 1)
+    if (endT > END_HOLD && time() % 1 < 0.6) printc('Press X to continue', 190, 7, 1)
   }
 }

@@ -75,7 +75,8 @@ const RUN = 1.5                      // running speed (and step rate) compared w
 const LEAN = 1.5, LEAN_MAX = 0.045   // lean into turns: roll per turn of turning per frame, and the most (turns)
 const FLOWERS = 160                  // how many flowers to sprinkle over the grass
 const FLOWER_COLORS = [14, 8, 10, 7, 13, 12]   // petal colors (the model's petals are color 14)
-const DRAW_NEAR = 30                 // flowers and rocks further than this from Lumi aren't drawn
+const DRAW_NEAR = 20, NEAR_FADE = 4  // flowers, rocks and Starries are drawn only within DRAW_NEAR of the camera,
+                                     // fading out with see-through over the last NEAR_FADE blocks
 // What the Starries say. A Starry marker's yaw (in the Scene tab) picks its line here: yaw 0 says
 // the first, yaw 1 the second, and so on. Words wrap to fit the box.
 const STARRY_LINES = [
@@ -156,12 +157,12 @@ function _init() {
   // is shut, and fades away with it: walls and a roof to keep a secret.
   doors = Object.entries(s.named).filter(([n]) => /(star|key) door \d+/.test(n) && !/ cover$/.test(n))
     .map(([n, m]) => ({ m, kind: n.match(/(star|key) door/)[1], need: +n.match(/door (\d+)/)[1], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5), final: n.startsWith('final'),
-      corner: mtow(m, 0, 0, 0), foot: mtow(m, 2.5, 0, 0.5), fade: 0, most: FADE, cover: s.named[n + ' cover'], ball: ballOf(m) }))
-  for (let d of doors) d.coverBall = d.cover != null ? ballOf(d.cover) : null   // doors fade like props when they hide Lumi
+      corner: mtow(m, 0, 0, 0), foot: mtow(m, 2.5, 0, 0.5), fade: 0, most: FADE, cover: s.named[n + ' cover'], box: boxOf(m) }))
+  for (let d of doors) d.coverBox = d.cover != null ? boxOf(d.cover) : null   // doors fade like props when they hide Lumi
   // the final pieces: placements named "final ..." (the stair and the platform), hidden until WELL_NEED
   let FIN = Object.entries(s.named).filter(([n]) => n.startsWith('final') && !/(star|key) door/.test(n)).map(([n, m]) => m)
   props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m || d.cover == m))
-    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m), stair: m == s.named['final stair'], ball: ballOf(m) }))
+    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m), stair: m == s.named['final stair'], box: boxOf(m) }))
   let mark = (v) => s.things.filter((t) => t[0] == v).map(([v, x, y, z]) => ({ x, y, z, got: false }))[0] || null
   trophy = mark(11); diamond = mark(12)
   finalState = 'hidden'; finalT = 0; mFade = 0
@@ -211,10 +212,19 @@ function msize(m) {
   let size = (f) => { let lo = 1, hi = 256; while (lo < hi) { let mid = (lo + hi + 1) >> 1; if (f(mid - 1)) lo = mid; else hi = mid - 1 } return lo }
   return [size((i) => inside(i, 0, 0)), size((i) => inside(0, i, 0)), size((i) => inside(0, 0, i))]
 }
-// a ball round a whole map, wherever and however it's placed: { x, y, z, r }
-function ballOf(m) {
-  let [w, h, d] = msize(m), [x, y, z] = mtow(m, w / 2, h / 2, d / 2)
-  return { x, y, z, r: sqrt(w * w + h * h + d * d) / 2 }
+// The box round a map's blocks (not its whole size: many props are mostly empty), as its 8 corners
+// in the world, wherever and however the map is placed; null for an empty map. Read once at the start.
+function boxOf(m) {
+  let [w, h, d] = msize(m), lo = [w, h, d], hi = [-1, -1, -1]
+  for (let z = 0; z < d; z++) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (!mget(m, x, y, z)) continue
+    if (x < lo[0]) lo[0] = x; if (y < lo[1]) lo[1] = y; if (z < lo[2]) lo[2] = z
+    if (x > hi[0]) hi[0] = x; if (y > hi[1]) hi[1] = y; if (z > hi[2]) hi[2] = z
+  }
+  if (hi[0] < 0) return null
+  let pts = []
+  for (let c = 0; c < 8; c++) pts.push(mtow(m, c & 1 ? hi[0] + 1 : lo[0], c & 2 ? hi[1] + 1 : lo[1], c & 4 ? hi[2] + 1 : lo[2]))
+  return pts
 }
 let VIEW = null                      // this frame's camera, for inView (null: draw everything, as on the title)
 function viewSetup() {
@@ -236,7 +246,32 @@ function inView(x, y, z, r) {
   let lim = f + R * 1.42                                                 // the 90-degree view, widened by the ball
   return abs(vx * V.r[0] + vz * V.r[1]) <= lim && abs(vx * V.u[0] + vy * V.u[1] + vz * V.u[2]) <= lim
 }
-function ballInView(b) { return !b || inView(b.x, b.y, b.z, b.r) }
+// Can the camera see any of a box (from boxOf)? Off screen only if all 8 corners are past the same
+// edge of the view. The curve bends a box's edges upward between its corners (by up to k L^2 / 4 for a
+// box L long along the view), so each corner is also tried that much higher.
+function boxInView(pts) {
+  let V = VIEW
+  if (!V || pts === undefined) return true
+  if (!pts) return false
+  let as = pts.map(([x, , z]) => (x - V.t[0]) * V.a[0] + (z - V.t[2]) * V.a[1])
+  let L = max(...as) - min(...as), lift = V.k * L * L / 4 + 0.1
+  let out = [0, 0, 0, 0, 0]                                   // corners past: left, right, bottom, top, behind
+  for (let i = 0; i < 8; i++) for (let up of [0, lift]) {
+    let [x, y, z] = pts[i]
+    let vx = x - V.c[0], vy = y - V.k * as[i] * as[i] + up - V.c[1], vz = z - V.c[2]
+    let f = vx * V.f[0] + vy * V.f[1] + vz * V.f[2]
+    let sd = vx * V.r[0] + vz * V.r[1], u = vx * V.u[0] + vy * V.u[1] + vz * V.u[2]
+    if (-sd > f) out[0]++; if (sd > f) out[1]++; if (-u > f) out[2]++; if (u > f) out[3]++; if (f < 0.05) out[4]++
+  }
+  return !out.some((n) => n == 16)
+}
+// Small things (flowers, rocks, Starries) only near the camera: 0 drawn whole, up to 1 gone.
+// They fade out with see-through as they pass DRAW_NEAR - NEAR_FADE, and are gone past DRAW_NEAR.
+function nearFade(x, y, z) {
+  if (!VIEW) return 0
+  let d = dist([x, y, z], VIEW.c)
+  return d >= DRAW_NEAR ? 1 : max(0, (d - DRAW_NEAR + NEAR_FADE) / NEAR_FADE)
+}
 
 function tile(x, y, z) {
   for (let m of solid_maps()) { let t = mgetw(m, x, y, z)[0]; if (t) return t }
@@ -842,7 +877,7 @@ function _draw() {
   for (let p of props) {
     if (title) p.fade = 0
     if (p.final && finalState == 'hidden') continue
-    if (p.fade > 0.98 || !ballInView(p.ball)) continue      // faded out completely, or off screen
+    if (p.fade > 0.98 || !boxInView(p.box)) continue      // faded out completely, or off screen
     if (p.final && finalState == 'appearing') fillp(appear, -1)
     else if (p.fade > 0.02) fillp(p.fade, -1)
     map(p.m, p.fade > 0.02)          // while see-through, the backs too, so a prop the camera is inside still shows
@@ -852,10 +887,10 @@ function _draw() {
     if (d.state == 'open' || (d.final && finalState == 'hidden')) continue
     if (d.state == 'opening') fillp(min(1, d.t / DOOR_TIME), -1)
     else if (d.final && finalState == 'appearing') fillp(appear, -1)
-    if (d.cover != null && ballInView(d.coverBall)) map(d.cover, true)   // the cover fades with the door, but never for sightlines
+    if (d.cover != null && boxInView(d.coverBox)) map(d.cover, true)   // the cover fades with the door, but never for sightlines
     if (title) d.fade = 0
     else if (d.state == 'shut' && d.fade > 0.02) fillp(d.fade, -1)
-    if (ballInView(d.ball)) map(d.m)
+    if (boxInView(d.box)) map(d.m)
     fillp()
   }
   // the trophy and the diamond, turning slowly over the final platform
@@ -907,7 +942,8 @@ function _draw() {
   // Starries, floating and bobbing, each in its own color
   if (!title) {
     for (let st of starries) {
-      if (abs(st.x - px) > DRAW_NEAR || abs(st.z - pz) > DRAW_NEAR || !inView(st.x, st.y + 1.5, st.z, 1.2)) continue
+      let fade = nearFade(st.x, st.y + 1.1, st.z)
+      if (fade > 0.97 || !inView(st.x, st.y + 1.5, st.z, 1.2)) continue
       let hop = st.spin > 0 ? sin((1 - st.spin / SPIN) * 0.5) * 0.7 : 0   // a little bounce while it twirls
       let sway = 0
       if (st.line >= DANCERS) {             // the dancers: a bouncy hop, each to its own beat, and a sway
@@ -916,23 +952,30 @@ function _draw() {
       }
       pal(10, STARRY_COLORS[st.line % STARRY_COLORS.length])
       outline(7, false)                     // a white outline so they stand out
+      if (fade > 0.02) fillp(fade, -1)
       vox(15, st.x, st.y + 1.1 + hop + sin(time() * 0.7 + st.x) * 0.12, st.z, 0, st.face + (st.line >= DANCERS ? sway : 0), sway, 0.8)
       outline(0)
-      pal()
+      pal(); fillp()
     }
   }
 
   // flowers (shaking when walked through, twirling in a spin) and rocks (tumbling when flung)
   if (!title) {
     for (let f of flowers) {
-      if (abs(f.x - px) > DRAW_NEAR || abs(f.z - pz) > DRAW_NEAR || !inView(f.x, f.y + 0.25, f.z, 0.5)) continue
+      if (abs(f.x - px) > DRAW_NEAR + CAM_DIST || abs(f.z - pz) > DRAW_NEAR + CAM_DIST) continue     // a quick first check
+      let fade = nearFade(f.x, f.y + 0.25, f.z)
+      if (fade > 0.97 || !inView(f.x, f.y + 0.25, f.z, 0.5)) continue
       let roll = f.shake > 0 ? sin(f.shake * 0.11) * 0.06 * f.shake / 18 : 0
       pal(14, f.c)
+      if (fade > 0.02) fillp(fade, -1)
       vox(13, f.x, f.y, f.z, 0, f.yaw, roll)
-      pal()
+      pal(); fillp()
     }
     for (let k of rocks) {
-      if (abs(k.x - px) > DRAW_NEAR || abs(k.z - pz) > DRAW_NEAR || (!k.flying && !inView(k.x, k.y + 0.25, k.z, 0.5))) continue
+      if (abs(k.x - px) > DRAW_NEAR + CAM_DIST || abs(k.z - pz) > DRAW_NEAR + CAM_DIST) continue
+      let fade = nearFade(k.x, k.y + 0.25, k.z)
+      if (fade > 0.97 || (!k.flying && !inView(k.x, k.y + 0.25, k.z, 0.5))) continue
+      if (fade > 0.02) fillp(fade, -1)
       vox(14, k.x, k.y, k.z, k.tumble, k.yaw + k.tumble * 0.5, 0)
       if (k.flying) {                          // a flat black shadow on the floor below a flying rock
         let below = floorBelow(k.x, k.y + 0.25, k.z)
@@ -943,6 +986,7 @@ function _draw() {
           pal(); outline(0)
         }
       }
+      fillp()
     }
   }
   for (let k of keys) {

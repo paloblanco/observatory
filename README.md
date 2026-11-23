@@ -50,7 +50,7 @@ Where the stars are: 100 in all, 14 of them in chests. Each area has enough to o
 
 ## Speed
 
-The rolling world (`cam_set_curve`) turns off the engine's own skipping of things off screen, so the game does it itself: before drawing a prop, a door, a star, a beam, a chest, a flower, a rock or a Starry, `inView` checks it against the camera's view (bent the way the curve bends it) and leaves it out if it can't be seen. Each prop's size is found when the game starts (`msize`), so maps can be resized in the IDE. Props draw the backs of their faces only while they're see-through. On a slow tablet, the pause menu's **Outlines: off** and **Resolution 1×** help too.
+The rolling world (`cam_set_curve`) turns off the engine's own skipping of things off screen, so the game does it itself: before drawing a prop, a door, a star, a beam, a chest, a flower, a rock or a Starry, `inView` checks it against the camera's view (bent the way the curve bends it) and leaves it out if it can't be seen. Each prop's size, and the box round its blocks, is found when the game starts (`msize`, `boxOf`), so maps can be resized in the IDE; a prop is skipped when all 8 corners of that box are past the same edge of the view. Flowers, rocks and Starries are drawn only within 20 blocks of the camera, fading out with see-through over the last 4 (`DRAW_NEAR`, `NEAR_FADE`). Props draw the backs of their faces only while they're see-through. On a slow tablet, the pause menu's **Outlines: off** and **Resolution 1×** help too.
 
 ## Files
 

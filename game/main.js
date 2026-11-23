@@ -48,6 +48,8 @@ const WELL_NEED = 70                 // stars in the Star Well that bring the fi
 const FINAL_TIME = 60                // frames the final stair takes to appear (time stands still meanwhile)
 const FINAL_SIZE = [26, 38, 37]      // the final stair map's size, to pick sparkle spots on it
 const BEAM_HIDE = 12, BEAM_SHOW = 15 // a waiting star's beam fades out within BEAM_HIDE of Lumi, back in past BEAM_SHOW
+const POP = 30, POP_HIGH = 1.8         // a star or key from a chest: frames it bounces (it can't be picked up
+                                     // until it lands), and how high it goes
 const DOOR_TIME = 60                 // frames a star door takes to fade away (time stands still meanwhile)
 const FOCUS_MOVE = 0.3               // during those freezes the camera swings to the door (or the stair's foot) and
                                      // back: this part of the freeze going there, the same coming back, holding between
@@ -149,7 +151,7 @@ function _init() {
   // is shut, and fades away with it: walls and a roof to keep a secret.
   doors = Object.entries(s.named).filter(([n]) => /(star|key) door \d+/.test(n) && !/ cover$/.test(n))
     .map(([n, m]) => ({ m, kind: n.match(/(star|key) door/)[1], need: +n.match(/door (\d+)/)[1], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5), final: n.startsWith('final'),
-      corner: mtow(m, 0, 0, 0), fade: 0, most: FADE, cover: s.named[n + ' cover'] }))   // doors fade like props when they hide Lumi
+      corner: mtow(m, 0, 0, 0), foot: mtow(m, 2.5, 0, 0.5), fade: 0, most: FADE, cover: s.named[n + ' cover'] }))   // doors fade like props when they hide Lumi
   // the final pieces: placements named "final ..." (the stair and the platform), hidden until WELL_NEED
   let FIN = Object.entries(s.named).filter(([n]) => n.startsWith('final') && !/(star|key) door/.test(n)).map(([n, m]) => m)
   props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m || d.cover == m))
@@ -333,7 +335,8 @@ function _update() {
     if (n != stepT) { sfx(0, 2); stepT = n; kickDust() }
   } else stepT = -1
 
-  // fell off the edge: back to where she picked up her last star (or the start, before any)
+  // fell off the edge: back to where she picked up her last star or last walked through an open
+  // door, whichever was later (or the start, before either)
   if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1) }
 
   if (won != 'diamond') ticks++
@@ -372,6 +375,10 @@ function _update() {
   for (let d of doors) {
     if (!there(d)) continue
     if (d.state == 'shut' && (d.kind == 'key' ? keyCount : home) >= d.need && dist([px, py, pz], d.at) < 4.5) openDoor(d)
+    // an open door is a checkpoint: walking through it, she'll come back here if she falls
+    let f = d.foot
+    if (d.state == 'open' && grounded && dist([px, pz], [f[0], f[2]]) < 1.2 && abs(py - R - f[1]) < 0.6)
+      safe = [f[0], f[1] + R + 0.3, f[2]]
   }
 
   // at the Star Well: every star she carries flies in, one after another
@@ -603,6 +610,10 @@ function pushChests() {
   }
 }
 
+// How high a star or key bouncing out of a chest is, with pop frames left: up and back down
+// to where it rests, landing just as it can be picked up.
+function popHop(pop) { let f = 1 - pop / POP; return POP_HIGH * 4 * f * (1 - f) }
+
 // A chest breaks into flying planks; what was inside pops out.
 function breakChest(c) {
   c.broken = true; sfx(16, 2)
@@ -613,8 +624,8 @@ function breakChest(c) {
   }
   for (let i = 0; i < 6; i++) bits.push({ x: c.x, y: c.y + 0.4, z: c.z, vx: rnd(0.04) - 0.02, vy: 0.03,
     vz: rnd(0.04) - 0.02, c: 7, s: 0.35, life: 20, g: 0 })      // a puff of dust
-  if (c.has == 'star') stars.push({ x: c.x, y: c.y + 0.7, z: c.z, state: 'free', t: 0, pop: 30 })
-  if (c.has == 'key') keys.push({ x: c.x, y: c.y, z: c.z, pop: 30 })
+  if (c.has == 'star') stars.push({ x: c.x, y: c.y + 0.7, z: c.z, state: 'free', t: 0, pop: POP })
+  if (c.has == 'key') keys.push({ x: c.x, y: c.y, z: c.z, pop: POP })
 }
 
 // save the best times (to the trophy, and to the diamond) and the hero last chosen
@@ -793,9 +804,8 @@ function _draw() {
   let k = 0
   for (let st of stars) {
     let p, s = 0.7
-    if (st.state == 'free' && st.pop > 0) {      // just out of a chest: it pops up and grows
-      let f = 1 - st.pop / 30
-      p = [st.x, st.y - 0.5 + sin(f * 0.5) * 1.3, st.z]; s = 0.7 * f
+    if (st.state == 'free' && st.pop > 0) {      // just out of a chest: it bounces straight up and lands
+      p = [st.x, st.y + popHop(st.pop), st.z]
     } else if (st.state == 'free') {
       p = [st.x, st.y + sin(time() + st.x) * 0.12, st.z]
       if (!title && st.pop == 0 && (st.beam || 0) < 0.97) {
@@ -861,9 +871,8 @@ function _draw() {
     }
   }
   for (let k of keys) {
-    let f = k.pop > 0 ? 1 - k.pop / 30 : 1
-    let y = k.y + 0.4 + (k.pop > 0 ? sin(f * 0.5) * 1.3 : 0.6 + sin(time() * 2) * 0.1)
-    vox(7, k.x, y, k.z, 0, time() * 0.5, 0, 0.7 * f)
+    let y = k.y + 1 + (k.pop > 0 ? popHop(k.pop) : sin(time() * 2) * 0.1)
+    vox(7, k.x, y, k.z, 0, time() * 0.5, 0, 0.7)
   }
 
   // the hero (Lumi or Lumo): spinning, she turns twice round and squashes a little; a ring of sparkles circles her

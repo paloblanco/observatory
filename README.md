@@ -13,7 +13,7 @@ A little BLOCKO3D game: Lumi the star-keeper explores an observatory floating am
 - Standing still: look around with the mouse (click the game first; Esc frees it), the right stick, or a finger drag. Walking eases the camera back over a second, and Lumi walks relative to the camera as it turns.
 - Enter: pause
 
-There's no jumping: Lumi climbs 1-block steps by walking into them, and every star can be reached on foot. The camera sits behind and above her, looking north and down, and the world rolls away toward the horizon; it flattens out while you look around.
+There's no jumping: Lumi climbs 1-block steps by walking into them, and every star can be reached on foot. If she falls off the edge, she comes back where she picked up her last star (or at the start, before her first). Each waiting star sends up a beam of light so it can be found from far away; the beam fades out once Lumi is within 12 blocks, and comes back past 15 (`BEAM_HIDE`, `BEAM_SHOW` in `main.js`). The camera sits behind and above her, looking north and down, and the world rolls away toward the horizon; it flattens out while you look around.
 
 ## What's in the game
 

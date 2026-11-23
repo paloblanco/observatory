@@ -47,6 +47,7 @@ const HEROES = [{ name: 'Lumi', vox: 0 }, { name: 'Lumo', vox: 8 }]
 const WELL_NEED = 70                 // stars in the Star Well that bring the final stair
 const FINAL_TIME = 60                // frames the final stair takes to appear (time stands still meanwhile)
 const FINAL_SIZE = [26, 38, 37]      // the final stair map's size, to pick sparkle spots on it
+const BEAM_HIDE = 12, BEAM_SHOW = 15 // a waiting star's beam fades out within BEAM_HIDE of Lumi, back in past BEAM_SHOW
 const DOOR_TIME = 60                 // frames a star door takes to fade away (time stands still meanwhile)
 const FOCUS_MOVE = 0.3               // during those freezes the camera swings to the door (or the stair's foot) and
                                      // back: this part of the freeze going there, the same coming back, holding between
@@ -273,7 +274,6 @@ function _update() {
   if (grounded && vy < 0) vy = 0
   if (ny < -0.5 && vy > 0) vy = 0                // bumped a ceiling
   if (grounded && !was && fall < -0.15) sfx(2, 1)
-  if (grounded) safe = [px, py + 0.3, pz]
 
   pushChests()
 
@@ -333,7 +333,7 @@ function _update() {
     if (n != stepT) { sfx(0, 2); stepT = n; kickDust() }
   } else stepT = -1
 
-  // fell off the edge: back to the last safe spot
+  // fell off the edge: back to where she picked up her last star (or the start, before any)
   if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1) }
 
   if (won != 'diamond') ticks++
@@ -348,6 +348,13 @@ function _update() {
     if (st.pop > 0) st.pop--
     if (st.state == 'free' && st.pop == 0 && dist([px, pz], [st.x, st.z]) < 1.1 && abs(py - st.y) < 1.8) {
       st.state = 'carried'; carried.push(st); sfx(6, 3)
+      safe = [st.x, st.y - 0.7 + R + 0.3, st.z]     // the ground under the star: where she comes back if she falls
+    }
+    // its beam of light fades out once she's within BEAM_HIDE, and back in past BEAM_SHOW
+    if (st.state == 'free') {
+      let d = dist([px, py - R, pz], [st.x, st.y - 0.7, st.z])
+      if (d < BEAM_HIDE) st.hide = true; else if (d > BEAM_SHOW) st.hide = false
+      st.beam = lerp(st.beam || 0, st.hide ? 1 : 0, 0.08)
     }
   }
 
@@ -791,7 +798,11 @@ function _draw() {
       p = [st.x, st.y - 0.5 + sin(f * 0.5) * 1.3, st.z]; s = 0.7 * f
     } else if (st.state == 'free') {
       p = [st.x, st.y + sin(time() + st.x) * 0.12, st.z]
-      if (!title && st.pop == 0) line3(st.x, st.y - 0.6, st.z, st.x, st.y + 7, st.z, 10)
+      if (!title && st.pop == 0 && (st.beam || 0) < 0.97) {
+        if (st.beam > 0.02) fillp(st.beam, -1)    // fading out (or back in): see-through
+        line3(st.x, st.y - 0.6, st.z, st.x, st.y + 7, st.z, 10)
+        fillp()
+      }
     } else if (st.state == 'carried') {
       p = trailSpot(carried.indexOf(st)); s = 0.5
     } else if (st.state == 'flying') {

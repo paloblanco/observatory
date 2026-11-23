@@ -5224,11 +5224,12 @@ function _init() {
   // is shut, and fades away with it: walls and a roof to keep a secret.
   doors = Object.entries(s.named).filter(([n]) => /(star|key) door \d+/.test(n) && !/ cover$/.test(n))
     .map(([n, m]) => ({ m, kind: n.match(/(star|key) door/)[1], need: +n.match(/door (\d+)/)[1], state: 'shut', t: 0, at: mtow(m, 2.5, 2, 0.5), final: n.startsWith('final'),
-      corner: mtow(m, 0, 0, 0), foot: mtow(m, 2.5, 0, 0.5), fade: 0, most: FADE, cover: s.named[n + ' cover'] }))   // doors fade like props when they hide Lumi
+      corner: mtow(m, 0, 0, 0), foot: mtow(m, 2.5, 0, 0.5), fade: 0, most: FADE, cover: s.named[n + ' cover'], ball: ballOf(m) }))
+  for (let d of doors) d.coverBall = d.cover != null ? ballOf(d.cover) : null   // doors fade like props when they hide Lumi
   // the final pieces: placements named "final ..." (the stair and the platform), hidden until WELL_NEED
   let FIN = Object.entries(s.named).filter(([n]) => n.startsWith('final') && !/(star|key) door/.test(n)).map(([n, m]) => m)
   props = s.maps.filter((m) => m != M && !doors.some((d) => d.m == m || d.cover == m))
-    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m), stair: m == s.named['final stair'] }))
+    .map((m) => ({ m, corner: mtow(m, 0, 0, 0), fade: 0, most: m == ROOF ? ROOF_FADE : FADE, final: FIN.includes(m), stair: m == s.named['final stair'], ball: ballOf(m) }))
   let mark = (v) => s.things.filter((t) => t[0] == v).map(([v, x, y, z]) => ({ x, y, z, got: false }))[0] || null
   trophy = mark(11); diamond = mark(12)
   finalState = 'hidden'; finalT = 0; mFade = 0
@@ -5260,6 +5261,50 @@ function solid_maps() { return [M, ...close.map((p) => p.m), ...doors.filter((d)
 
 // is this prop or door in the world yet? (the final ones only once the final stair is shown)
 function there(p) { return !p.final || finalState == 'shown' }
+
+// ---- Drawing only what the camera can see. With the world rolling away (cam_set_curve), the engine
+// can't skip things off screen by itself, so every map and model drawn costs the GPU, behind the camera
+// or not. So the game checks each thing against the view first: inView bends the point the way the
+// curve does, then tests a ball round it against the camera's 90-degree view.
+
+// A map's size, found by trying: mget is 0 outside a map and mset does nothing there, so set a block,
+// read it back, and put it back (a binary search along each axis, about 25 tries a map).
+function msize(m) {
+  let inside = (x, y, z) => {
+    let t = mget(m, x, y, z)
+    if (t) return true
+    mset(m, x, y, z, 1); let ok = mget(m, x, y, z) == 1; mset(m, x, y, z, 0)
+    return ok
+  }
+  let size = (f) => { let lo = 1, hi = 256; while (lo < hi) { let mid = (lo + hi + 1) >> 1; if (f(mid - 1)) lo = mid; else hi = mid - 1 } return lo }
+  return [size((i) => inside(i, 0, 0)), size((i) => inside(0, i, 0)), size((i) => inside(0, 0, i))]
+}
+// a ball round a whole map, wherever and however it's placed: { x, y, z, r }
+function ballOf(m) {
+  let [w, h, d] = msize(m), [x, y, z] = mtow(m, w / 2, h / 2, d / 2)
+  return { x, y, z, r: sqrt(w * w + h * h + d * d) / 2 }
+}
+let VIEW = null                      // this frame's camera, for inView (null: draw everything, as on the title)
+function viewSetup() {
+  let [fx, fy, fz] = dir3(camYaw, -camPitch), h = sqrt(fx * fx + fz * fz) || 1
+  let rx = -fz / h, rz = fx / h                                    // right (level)
+  let ux = -rz * fy, uy = rz * fx - rx * fz, uz = rx * fy          // up: right x forward
+  VIEW = { c: [camAt[0] - fx * CAM_DIST, camAt[1] - fy * CAM_DIST, camAt[2] - fz * CAM_DIST], t: camAt,
+    f: [fx, fy, fz], r: [rx, rz], u: [ux, uy, uz], a: [fx / h, fz / h], k: camK }
+}
+// Can the camera see anything of a ball of radius r at (x, y, z)? (true when unsure)
+function inView(x, y, z, r) {
+  let V = VIEW
+  if (!V) return true
+  let a = (x - V.t[0]) * V.a[0] + (z - V.t[2]) * V.a[1]                   // along the view, from the target
+  let R = r + V.k * (2 * abs(a) * r + r * r) + 0.5                       // the curve bends a big ball unevenly
+  let vx = x - V.c[0], vy = y - V.k * a * a - V.c[1], vz = z - V.c[2]   // where the curve puts it
+  let f = vx * V.f[0] + vy * V.f[1] + vz * V.f[2]
+  if (f < -R) return false                                               // behind the camera
+  let lim = f + R * 1.42                                                 // the 90-degree view, widened by the ball
+  return abs(vx * V.r[0] + vz * V.r[1]) <= lim && abs(vx * V.u[0] + vy * V.u[1] + vz * V.u[2]) <= lim
+}
+function ballInView(b) { return !b || inView(b.x, b.y, b.z, b.r) }
 
 function tile(x, y, z) {
   for (let m of solid_maps()) { let t = mgetw(m, x, y, z)[0]; if (t) return t }
@@ -5841,6 +5886,7 @@ function _draw() {
   if (title) {
     cam_set_curve(0)
     cam_orbit([63.5, 22, 63.5], time() * 0.015, -0.11, 76)
+    VIEW = null
   } else {
     let t = [px, py + 0.6 + lift, pz]
     if (focus) {                          // a freeze: swing to the spot, hold, and swing back to Lumi
@@ -5851,6 +5897,7 @@ function _draw() {
     } else camAt = cam = cam ? lerp(cam, t, 0.15) : t
     cam_set_curve(camK)
     cam_orbit(camAt, camYaw, -camPitch, CAM_DIST)
+    viewSetup()
     seeThrough()
   }
 
@@ -5863,20 +5910,20 @@ function _draw() {
   for (let p of props) {
     if (title) p.fade = 0
     if (p.final && finalState == 'hidden') continue
-    if (p.fade > 0.98) continue      // faded out completely
+    if (p.fade > 0.98 || !ballInView(p.ball)) continue      // faded out completely, or off screen
     if (p.final && finalState == 'appearing') fillp(appear, -1)
     else if (p.fade > 0.02) fillp(p.fade, -1)
-    map(p.m, true)                   // backs too, so a prop the camera is inside still shows (see-through)
+    map(p.m, p.fade > 0.02)          // while see-through, the backs too, so a prop the camera is inside still shows
     fillp()
   }
   for (let d of doors) {
     if (d.state == 'open' || (d.final && finalState == 'hidden')) continue
     if (d.state == 'opening') fillp(min(1, d.t / DOOR_TIME), -1)
     else if (d.final && finalState == 'appearing') fillp(appear, -1)
-    if (d.cover != null) map(d.cover, true)   // the cover fades with the door, but never for sightlines
+    if (d.cover != null && ballInView(d.coverBall)) map(d.cover, true)   // the cover fades with the door, but never for sightlines
     if (title) d.fade = 0
     else if (d.state == 'shut' && d.fade > 0.02) fillp(d.fade, -1)
-    map(d.m)
+    if (ballInView(d.ball)) map(d.m)
     fillp()
   }
   // the trophy and the diamond, turning slowly over the final platform
@@ -5904,7 +5951,7 @@ function _draw() {
       p = [st.x, st.y + popHop(st.pop), st.z]
     } else if (st.state == 'free') {
       p = [st.x, st.y + sin(time() + st.x) * 0.12, st.z]
-      if (!title && st.pop == 0 && (st.beam || 0) < 0.97) {
+      if (!title && st.pop == 0 && (st.beam || 0) < 0.97 && inView(st.x, st.y + 3.2, st.z, 4)) {
         if (st.beam > 0.02) fillp(st.beam, -1)    // fading out (or back in): see-through
         line3(st.x, st.y - 0.6, st.z, st.x, st.y + 7, st.z, 10)
         fillp()
@@ -5918,17 +5965,17 @@ function _draw() {
       p = ringSpot(k++, goal); s = 0.5
     }
     if (st.state == 'flying') k++
-    vox(3, p[0], p[1], p[2], 0, time() * 0.4, 0, s)
+    if (inView(p[0], p[1], p[2], 0.6)) vox(3, p[0], p[1], p[2], 0, time() * 0.4, 0, s)
   }
   outline(0)
 
   // chests, and keys waiting to be picked up
-  for (let c of chests) if (!c.broken) vox(4, c.x, c.y, c.z)
+  for (let c of chests) if (!c.broken && inView(c.x, c.y + 0.5, c.z, 0.9)) vox(4, c.x, c.y, c.z)
 
   // Starries, floating and bobbing, each in its own color
   if (!title) {
     for (let st of starries) {
-      if (abs(st.x - px) > DRAW_NEAR || abs(st.z - pz) > DRAW_NEAR) continue
+      if (abs(st.x - px) > DRAW_NEAR || abs(st.z - pz) > DRAW_NEAR || !inView(st.x, st.y + 1.5, st.z, 1.2)) continue
       let hop = st.spin > 0 ? sin((1 - st.spin / SPIN) * 0.5) * 0.7 : 0   // a little bounce while it twirls
       let sway = 0
       if (st.line >= DANCERS) {             // the dancers: a bouncy hop, each to its own beat, and a sway
@@ -5946,14 +5993,14 @@ function _draw() {
   // flowers (shaking when walked through, twirling in a spin) and rocks (tumbling when flung)
   if (!title) {
     for (let f of flowers) {
-      if (abs(f.x - px) > DRAW_NEAR || abs(f.z - pz) > DRAW_NEAR) continue
+      if (abs(f.x - px) > DRAW_NEAR || abs(f.z - pz) > DRAW_NEAR || !inView(f.x, f.y + 0.25, f.z, 0.5)) continue
       let roll = f.shake > 0 ? sin(f.shake * 0.11) * 0.06 * f.shake / 18 : 0
       pal(14, f.c)
       vox(13, f.x, f.y, f.z, 0, f.yaw, roll)
       pal()
     }
     for (let k of rocks) {
-      if (abs(k.x - px) > DRAW_NEAR || abs(k.z - pz) > DRAW_NEAR) continue
+      if (abs(k.x - px) > DRAW_NEAR || abs(k.z - pz) > DRAW_NEAR || (!k.flying && !inView(k.x, k.y + 0.25, k.z, 0.5))) continue
       vox(14, k.x, k.y, k.z, k.tumble, k.yaw + k.tumble * 0.5, 0)
       if (k.flying) {                          // a flat black shadow on the floor below a flying rock
         let below = floorBelow(k.x, k.y + 0.25, k.z)

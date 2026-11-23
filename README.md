@@ -48,6 +48,10 @@ There's no jumping: Lumi climbs 1-block steps by walking into them, and every st
 
 Where the stars are: 100 in all, 14 of them in chests. Each area has enough to open the next door: 35 out in the open, 6 behind the 5-star door, 9 behind the 10, 16 in the castle, 17 in the west island and undercroft, and 17 on the north island and sky tower. Every one can be reached on foot (checked by walking the routes the stars sit on). Move them in the Scene tab as you like.
 
+## Speed
+
+The rolling world (`cam_set_curve`) turns off the engine's own skipping of things off screen, so the game does it itself: before drawing a prop, a door, a star, a beam, a chest, a flower, a rock or a Starry, `inView` checks it against the camera's view (bent the way the curve bends it) and leaves it out if it can't be seen. Each prop's size is found when the game starts (`msize`), so maps can be resized in the IDE. Props draw the backs of their faces only while they're see-through. On a slow tablet, the pause menu's **Outlines: off** and **Resolution 1×** help too.
+
 ## Files
 
 | File | What it is |

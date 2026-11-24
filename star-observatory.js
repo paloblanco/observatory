@@ -5222,6 +5222,10 @@ let camK = CURVE, looking = false    // the roll (0 while looking around), and w
 let back = null                      // { yaw, pitch, k, t }: the camera easing back to its default view
 let title = true, flash = 0, nearWell = false
 let choosing = false                 // the character select screen, between the title and the game
+let saved = null                     // the game in progress, as last saved (null: none), and whether to save soon
+let dirty = false, saveT = 0
+const SAVE_EVERY = 300               // frames between saves of the clock (progress saves at once)
+let menu = 0                         // on the title, with a game saved: 0 Continue, 1 New game
 let hero = 0, slide = 0              // the chosen hero (index into HEROES), and the carousel easing toward it
 let M, ROOF                          // the observatory and the library roof (copies made by scene_load)
 let doors = []                       // { m, need, state: 'shut' | 'opening' | 'open', t, at }: the star doors
@@ -5268,7 +5272,7 @@ function _init() {
   let mark = (v) => s.things.filter((t) => t[0] == v).map(([v, x, y, z]) => ({ x, y, z, got: false }))[0] || null
   trophy = mark(11); diamond = mark(12)
   finalState = 'hidden'; finalT = 0; mFade = 0
-  stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z]) => ({ x, y, z, state: 'free', t: 0, pop: 0 }))
+  stars = s.things.filter(([v]) => v == 3).map(([v, x, y, z], i) => ({ x, y, z, state: 'free', t: 0, pop: 0, src: i }))
   chests = s.things.filter(([v]) => v >= 4 && v <= 6)
     .map(([v, x, y, z]) => ({ x, y, z, has: [null, 'star', 'key'][v - 4], broken: false }))
   goal = stars.length + chests.filter((c) => c.has == 'star').length
@@ -5283,6 +5287,7 @@ function _init() {
   best = d ? d.best : null
   best100 = d ? d.best100 : null
   hero = d && d.hero < HEROES.length ? d.hero : 0      // the last hero chosen
+  saved = d && d.game ? d.game : null; menu = 0; dirty = false
   slide = hero; choosing = false
   ;[px, py, pz] = SPAWN
   safe = [...SPAWN]
@@ -5384,13 +5389,18 @@ function solid(x, y, z) { return tile(x, y, z) > 0 }
 function _update() {
   if (flash > 0) flash--
   if (title) {
-    if (btnp(4) || btnp(5)) { title = false; choosing = true; sfx(6) }
+    if (saved && (btnp(2) || btnp(3))) { menu = 1 - menu; sfx(0) }
+    if (btnp(4) || btnp(5)) {
+      title = false
+      if (saved && menu == 0) { restoreGame(saved); sfx(5) }      // Continue: straight back in, as the hero saved
+      else { choosing = true; sfx(6) }                            // a new game: choose a hero first
+    }
     return
   }
   if (choosing) {                    // left / right turns the carousel, either button starts
     if (btnp(0)) { hero = (hero + HEROES.length - 1) % HEROES.length; sfx(0) }
     if (btnp(1)) { hero = (hero + 1) % HEROES.length; sfx(0) }
-    if (btnp(4) || btnp(5)) { choosing = false; sfx(5); keep() }
+    if (btnp(4) || btnp(5)) { choosing = false; sfx(5); saveGame() }   // a new game: it replaces any saved one
     return
   }
 
@@ -5515,7 +5525,7 @@ function _update() {
   // keys: pop out of a chest, then Lumi picks them up by touching them
   for (let k of keys) if (k.pop > 0) k.pop--
   keys = keys.filter((k) => {
-    if (k.pop == 0 && dist([px, pz], [k.x, k.z]) < 1 && abs(py - R - k.y) < 1.5) { keyCount++; sfx(17, 3); return false }
+    if (k.pop == 0 && dist([px, pz], [k.x, k.z]) < 1 && abs(py - R - k.y) < 1.5) { keyCount++; sfx(17, 3); dirty = true; return false }
     return true
   })
 
@@ -5530,6 +5540,7 @@ function _update() {
   if (py < -8) { ;[px, py, pz] = safe; vx = vy = vz = 0; flash = 20; sfx(4, 1); airTop = py }
 
   if (won != 'diamond') ticks++
+  if (dirty || ++saveT % SAVE_EVERY == 0) saveGame()   // after any progress, and every few seconds for the clock
   if (won) wonT++
 
   // Lumi's path, for the stars following her
@@ -5542,6 +5553,7 @@ function _update() {
     if (st.state == 'free' && st.pop == 0 && dist([px, pz], [st.x, st.z]) < 1.1 && abs(py - st.y) < 1.8) {
       st.state = 'carried'; carried.push(st); sfx(6, 3)
       safe = [st.x, st.y - 0.7 + R + 0.3, st.z]     // the ground under the star: where she comes back if she falls
+      dirty = true
     }
     // its beam of light fades out once she's within BEAM_HIDE, and back in past BEAM_SHOW
     if (st.state == 'free') {
@@ -5554,8 +5566,8 @@ function _update() {
   // star doors: once enough stars are in the well, a door opens as Lumi comes near
   // the trophy and the diamond, on the final platform
   if (finalState == 'shown') {
-    if (trophy && !trophy.got && dist([px, py - R, pz], [trophy.x, trophy.y, trophy.z]) < 1.4) { trophy.got = true; win('trophy') }
-    if (diamond && !diamond.got && dist([px, py - R, pz], [diamond.x, diamond.y, diamond.z]) < 1.6) { diamond.got = true; win('diamond') }
+    if (trophy && !trophy.got && dist([px, py - R, pz], [trophy.x, trophy.y, trophy.z]) < 1.4) { trophy.got = true; win('trophy'); saveGame() }
+    if (diamond && !diamond.got && dist([px, py - R, pz], [diamond.x, diamond.y, diamond.z]) < 1.6) { diamond.got = true; win('diamond'); saveGame() }
   }
 
   // under the main island, it turns see-through so Lumi can be seen
@@ -5568,7 +5580,7 @@ function _update() {
     // an open door is a checkpoint: walking through it, she'll come back here if she falls
     let f = d.foot
     if (d.state == 'open' && grounded && dist([px, pz], [f[0], f[2]]) < 1.2 && abs(py - R - f[1]) < 0.6)
-      safe = [f[0], f[1] + R + 0.3, f[2]]
+      { if (safe[0] != f[0] || safe[2] != f[2]) dirty = true; safe = [f[0], f[1] + R + 0.3, f[2]] }
   }
 
   // at the Star Well: every star she carries flies in, one after another
@@ -5586,7 +5598,7 @@ function _update() {
   for (let st of stars) {
     if (st.state != 'flying') continue
     if (++st.t >= 40) {
-      st.state = 'home'; home++; sfx(7, 3)
+      st.state = 'home'; home++; sfx(7, 3); dirty = true
       if (home == WELL_NEED) appearFinal()
     }
   }
@@ -5795,7 +5807,7 @@ function openDoor(d) {
         c: rnd([10, 10, 9, 23, 7]), s: 0.1 + rnd(0.1), life: 25 + flr(rnd(15)), g: -0.001 })
     }
     updateBits()
-    if (d.t >= DOOR_TIME) { d.state = 'open'; focus = null }
+    if (d.t >= DOOR_TIME) { d.state = 'open'; focus = null; dirty = true }
   })
 }
 
@@ -5825,12 +5837,60 @@ function breakChest(c) {
   }
   for (let i = 0; i < 6; i++) bits.push({ x: c.x, y: c.y + 0.4, z: c.z, vx: rnd(0.04) - 0.02, vy: 0.03,
     vz: rnd(0.04) - 0.02, c: 7, s: 0.35, life: 20, g: 0 })      // a puff of dust
-  if (c.has == 'star') stars.push({ x: c.x, y: c.y + 0.7, z: c.z, state: 'free', t: 0, pop: POP })
-  if (c.has == 'key') keys.push({ x: c.x, y: c.y, z: c.z, pop: POP })
+  if (c.has == 'star') stars.push({ x: c.x, y: c.y + 0.7, z: c.z, state: 'free', t: 0, pop: POP, chest: c })
+  if (c.has == 'key') keys.push({ x: c.x, y: c.y, z: c.z, pop: POP, chest: c })
+  dirty = true
 }
 
-// save the best times (to the trophy, and to the diamond) and the hero last chosen
-function keep() { save({ best: best, best100: best100, hero: hero }) }
+// The save: the best times (to the trophy, and to the diamond), the hero last chosen, and the game in
+// progress (one at a time; a new game replaces it, but never the best times).
+function keep() { save({ best: best, best100: best100, hero: hero, game: saved }) }
+
+// The game in progress, as a small object. Stars and chests are kept by their place in the scene:
+// stars as a letter each (f free, c following Lumi, h home in the well), chests as - (whole), e (broken,
+// empty), f / c / h (broken, and its star is...), k (broken, its key still lying there) or K (key taken).
+// Doors: o open, s shut. Lumi comes back at her respawn spot (her last star or door), with the stars
+// she was carrying following her.
+const STAR_CODE = { free: 'f', carried: 'c', flying: 'h', home: 'h' }
+function saveGame() {
+  let scene = stars.filter((st) => st.src != null)
+  saved = {
+    hero, ticks, keyCount, safe: safe.map((v) => +v.toFixed(2)),
+    stars: scene.map((st) => STAR_CODE[st.state]).join(''),
+    chests: chests.map((c) => {
+      if (!c.broken) return '-'
+      if (c.has == 'star') { let st = stars.find((t) => t.chest == c); return st ? STAR_CODE[st.state] : 'h' }
+      if (c.has == 'key') return keys.some((k) => k.chest == c) ? 'k' : 'K'
+      return 'e'
+    }).join(''),
+    doors: doors.map((d) => d.state == 'shut' ? 's' : 'o').join(''),
+    trophy: !!(trophy && trophy.got), diamond: !!(diamond && diamond.got),
+  }
+  dirty = false
+  keep()
+}
+const STATE_OF = { f: 'free', c: 'carried', h: 'home' }
+function restoreGame(g) {
+  if (g.hero < HEROES.length) hero = g.hero
+  ticks = g.ticks || 0; keyCount = g.keyCount || 0
+  ;(g.stars || '').split('').forEach((ch, i) => { if (stars[i] && STATE_OF[ch]) stars[i].state = STATE_OF[ch] })
+  ;(g.chests || '').split('').forEach((ch, i) => {
+    let c = chests[i]
+    if (!c || ch == '-') return
+    c.broken = true
+    if (c.has == 'star' && STATE_OF[ch]) stars.push({ x: c.x, y: c.y + 0.7, z: c.z, state: STATE_OF[ch], t: 0, pop: 0, chest: c })
+    if (c.has == 'key' && ch == 'k') keys.push({ x: c.x, y: c.y, z: c.z, pop: 0, chest: c })
+  })
+  ;(g.doors || '').split('').forEach((ch, i) => { if (doors[i] && ch == 'o') doors[i].state = 'open' })
+  home = stars.filter((st) => st.state == 'home').length
+  carried = stars.filter((st) => st.state == 'carried')
+  if (home >= WELL_NEED) finalState = 'shown'
+  if (trophy) trophy.got = !!g.trophy
+  if (diamond) diamond.got = !!g.diamond
+  if (g.safe) safe = [...g.safe]
+  ;[px, py, pz] = safe; vx = vy = vz = 0; airTop = py
+  spunOnce = true
+}
 
 // kind: 'trophy' (the end of the game) or 'diamond' (all 100 stars: the special ending)
 function win(kind) {
@@ -6154,7 +6214,14 @@ function _draw() {
     printc('Observatory', 86, 7, 1, 2)
     printc('Light the Star Well with ' + WELL_NEED + ' stars', 150, 12, 1)
     if (best != null) printc('Best ' + fmt(best) + (best100 != null ? '   All stars ' + fmt(best100) : ''), 168, 10, 1)
-    if (time() % 1 < 0.6) printc('Press X to start', 200, 7, 1)
+    if (saved) {                     // a game saved: Continue it, or start a new one (up / down, then X)
+      let n = (saved.stars + saved.chests).split('').filter((c) => c == 'h').length
+      let items = ['Continue  (' + n + ' stars, ' + fmt((saved.ticks || 0) / 60) + ')', 'New game']
+      items.forEach((t, i) => {
+        let sel = i == menu, y = 192 + i * 14
+        printc((sel ? '> ' : '') + t + (sel ? ' <' : ''), y, sel ? 10 : 6, 1)
+      })
+    } else if (time() % 1 < 0.6) printc('Press X to start', 200, 7, 1)
     return
   }
 

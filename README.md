@@ -15,6 +15,10 @@ A little BLOCKO3D game: Lumi the star-keeper explores an observatory floating am
 
 There's no jumping: Lumi climbs 1-block steps by walking into them, and every star can be reached on foot. If she falls off the edge, she comes back where she picked up her last star or the doorway of the last open door she walked through, whichever was later (or at the start, before either). Dropping 5 blocks or more lands hard: a thud, a ring of white dust, and a third of a second before she can walk or spin again (`HARD_FALL`, `HARD_STUN`). Each waiting star sends up a beam of light so it can be found from far away; the beam fades out once Lumi is within 12 blocks, and comes back past 15 (`BEAM_HIDE`, `BEAM_SHOW` in `main.js`). The camera sits behind and above her, looking north and down, and the world rolls away toward the horizon; it flattens out while you look around.
 
+## Saving
+
+The game saves itself: every star picked up or brought home, chest broken, key taken and door opened or walked through saves at once, and the clock every 5 seconds (`SAVE_EVERY`). With a game saved, the title offers **Continue** (with the stars home and the time so far) or **New game** (up / down, then X). Continue goes straight back in, as the same hero, at the last respawn spot (the last star picked up or door walked through), with the stars she was carrying following her. New game goes to the hero select and replaces the saved game once it starts; the best times are never touched. There's one saved game. Stars and chests are saved by their order in the scene, so adding or removing star or chest markers in the Scene tab can mix up an old save (start a new game after editing them).
+
 ## What's in the game
 
 - **Map 0**, 128×64×128: the main island in the middle, with a plaza and the Star Well, a telescope tower (north), the star library (east), and a garden pond and trees (west). Around it:

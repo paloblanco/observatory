@@ -1,6 +1,6 @@
 name door
 speed 6 loop 0 0
-# pitch wave volume effect: a rising, shimmering arpeggio as a star door opens
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 36 0 4 0
 40 0 4 0
 43 0 4 0

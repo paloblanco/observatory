@@ -1,6 +1,6 @@
 name rock pop
 speed 2 loop 0 0
-# pitch wave volume effect: a knock and a little boing as a rock flies off
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 20 6 5 0
 26 0 4 1
 32 0 3 1

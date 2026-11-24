@@ -1,11 +1,9 @@
 # map 18 "castle back": 15 x 13 x 15 blocks (the size is in cart.json)
 # layers from the bottom (y0) up, each 15 rows from back (z0) to front, x0 left to right
 # "." is empty; a layer that isn't here is empty. The legend gives each character's tile.
-# The castle's back (north) half: the far walls, the courtyard maze behind the keep, and the stair
-# up to the wall walkway.
 legend
 m 5 marble
-B 6 brick
+b 6 brick
 h 23 hedge
 y0
 ...............
@@ -16,13 +14,13 @@ y0
 ...............
 ...............
 ...............
-..B........h.BB
-BB.h.........BB
-BB.B.......B.BB
-BB.B.BBhBB.B.BB
-BB.......mBBBBB
-BBBBBBBBBBBBBBB
-BBBBBBBBBBBBBBB
+..b........h.bb
+bb.h.........bb
+bb.b.......b.bb
+bb.b.bbhbb.b.bb
+bb.......mbbbbb
+bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb
 y1
 ...............
 ...............
@@ -32,13 +30,13 @@ y1
 ...............
 ...............
 ...............
-..B........h.BB
-BB.h.........BB
-BB.B.......B.BB
-BB.B.BBhBB.B.BB
-BB........mBBBB
-BBBBBBBBBBBBBBB
-BBBBBBBBBBBBBBB
+..b........h.bb
+bb.h.........bb
+bb.b.......b.bb
+bb.b.bbhbb.b.bb
+bb........mbbbb
+bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb
 y2
 ...............
 ...............
@@ -48,13 +46,13 @@ y2
 ...............
 ...............
 ...............
-.............BB
-BB...........BB
-BB...........BB
-BB...........BB
-BB.........mBBB
-BBBBBBBBBBBBBBB
-BBBBBBBBBBBBBBB
+.............bb
+bb...........bb
+bb...........bb
+bb...........bb
+bb.........mbbb
+bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb
 y3
 ...............
 ...............
@@ -64,13 +62,13 @@ y3
 ...............
 ...............
 ...............
-.............BB
-BB...........BB
-BB...........BB
-BB...........BB
-BB..........mBB
-BBBBBBBBBBBBBBB
-BBBBBBBBBBBBBBB
+.............bb
+bb...........bb
+bb...........bb
+bb...........bb
+bb..........mbb
+bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb
 y4
 ...............
 ...............
@@ -80,10 +78,10 @@ y4
 ...............
 ...............
 ...............
-..............B
+..............b
 ...............
-B.............B
+b.............b
 ...............
-B.............B
+b.............b
 ...............
-B.B.B.B.B.B.B.B
+b.b.b.b.b.b.b.b

@@ -59,8 +59,8 @@ declare function vox(n: any, x: any, y: any, z: any, pitch: any, yaw: any, roll:
 // ---- Primitives
 /** Axis-aligned cube centered on (x, y, z). size defaults to 1, c to 7. */
 declare function cube(x: any, y: any, z: any, size?: any, c?: any): any;
-/** Low-poly sphere. r defaults to 0.5. */
-declare function sphere(x: any, y: any, z: any, r?: any, c?: any): any;
+/** A low-poly sphere. r defaults to 0.5. n is how many faces go around it (3-64, default 12), with half as many from top to bottom: low is cheap and fine for particles and flashes (6 is chunky, 4 a diamond); 24 or more looks smooth up close. */
+declare function sphere(x: any, y: any, z: any, r?: any, c?: any, n?: any): any;
 /** A 1-pixel line in 3D. */
 declare function line3(x1: any, y1: any, z1: any, x2: any, y2: any, z2: any, c?: any): any;
 
@@ -101,6 +101,10 @@ declare function repeat(): any;
 declare function fog(c: any, near?: any, far?: any): any;
 /** No fog for draws after this. */
 declare function fog(): any;
+/** A light that punches a hole in the fog for this frame: within near blocks of (x, y, z) nothing is fogged (default 2), and from there it dithers back to the fog by far (default 5), the same way fog does from the camera. Torches are cleared at the start of every _draw, so add them each frame (vary near a little for a flicker). A frame can add up to 64; each view uses the 8 nearest to its camera. Without fog, torches do nothing. For a dark dungeon: bg(0) fog(0, 0, 0), then a torch for the player and one for each wall torch. Torches light through walls, and only clear the fog: they don't tint. */
+declare function torch(x: any, y: any, z: any, near?: any, far?: any): any;
+/** Remove this frame's torches. */
+declare function torch(): any;
 
 // ---- Sound
 /** Play sound n on a free channel (or the one that has played longest).
@@ -129,6 +133,14 @@ declare function save(value: any): any;
 /** The value saved last time, or null if there is none. */
 declare function load(): any;
 
+// ---- Pause menu
+/** Add the game's own item to the pause menu, in slot i (1-5); the game's items come right after Resume, in slot order. label is cut to 16 characters. When the player chooses it, fn(b) runs with the button that chose it: 4 for O, Enter, a click or a tap, 5 for X, 0 and 1 for left and right (so an item can step through settings). Afterwards the menu closes and the game resumes, unless fn returns true: then the menu stays open (for a toggle whose label changes). The game is still paused while fn runs. Restart clears the items, so set them in _init. */
+declare function menuitem(i: any, label: any, fn: any): any;
+/** Change an item's label and keep its function: handy inside fn, as in the example. */
+declare function menuitem(i: any, label: any): any;
+/** Remove the item in slot i. */
+declare function menuitem(i: any): any;
+
 // ---- Camera
 /** Camera position. */
 declare function cam_set_pos(xyz: any): any;
@@ -140,7 +152,7 @@ declare function cam_orbit(target: any, yaw: any, pitch: any, dist: any): any;
 declare function cam_set_fov(f: any): any;
 /** Orthographic view: w blocks across the longer side of the view at any distance, so nothing shrinks far away (on the full screen a block is 256 / w pixels: cam_set_ortho(32) makes a block 8 pixels, one texel per pixel). The camera is placed as usual with cam_set_pos and cam_set_lookat (or cam_orbit), which set the direction it looks; things behind it aren't drawn, so moving it into a building cuts away the walls in front. Isometric: cam_set_ortho(20) then cam_orbit(player, 0.125, -0.098, 60). mouse_ray works as usual (all rays point the same way). The two-color sky shows one blend for the whole view. cam_set_ortho(0): back to perspective, with the fov as set. */
 declare function cam_set_ortho(w: any): any;
-/** Bend the picture: each point moves along push by k × d², d its distance from the camera's target measured along along. Only the picture bends: collision, mget, mray and positions stay flat, so game code doesn't change (mouse_ray clicks are only right near the target). along: 'view' (the default: the camera's forward direction across the ground) or 'side' (its sideways direction), a world axis 'x', 'y' or 'z', or two axes like 'xz'. One direction bends like a cylinder, two like a sphere. push: 'down' (the default), 'away' (from the camera, across the ground), or '+x', '-x', '+y', '-y', '+z', '-z'. A negative k bends the other way. cam_set_curve(0): flat again (the default). */
+/** Bend the picture: each point moves along push by k × d², d its distance from the camera's target measured along along. Only the picture bends: collision, mget, mray and positions stay flat, so game code doesn't change; things that stay off screen after bending are still skipped, as without a curve (mouse_ray clicks are only right near the target). along: 'view' (the default: the camera's forward direction across the ground) or 'side' (its sideways direction), a world axis 'x', 'y' or 'z', or two axes like 'xz'. One direction bends like a cylinder, two like a sphere. push: 'down' (the default), 'away' (from the camera, across the ground), or '+x', '-x', '+y', '-y', '+z', '-z'. A negative k bends the other way. cam_set_curve(0): flat again (the default). */
 declare function cam_set_curve(k: any, along?: any, push?: any): any;
 /** Only draw inside this rectangle of the screen, corners included: 3D, text and rectangles. clip() draws everywhere again. Each clip() starts a new 3D view, centered in its rectangle, with its own camera: the camera, fov and bg as set by the time the next clip() or the end of _draw comes. So clip(0, 0, 127, 255), set a camera, draw; clip(128, 0, 255, 255), set another, draw again: split screen. A view drawn later sits on top of earlier ones (a minimap, a mirror). mouse_ray() uses the view under the cursor. */
 declare function clip(x0: any, y0: any, x1: any, y1: any): any;
@@ -164,8 +176,8 @@ declare function btn(i: any, p?: any): any;
 declare function btnp(i: any, p?: any): any;
 /** Stick i (0 left, 1 right) of player p as [x, y], each -1 to 1; right and down are positive. A small dead zone reads as exactly 0. When the left stick is centered, stick(0) follows the d-pad or arrow keys instead, so analog movement also works on a keyboard. */
 declare function stick(i: any, p?: any): any;
-/** Which control phones and tablets show on the left: 0 d-pad (the default), 1 analog circle (touch anywhere in it: direction and distance from the middle go to stick(0), and pushing past halfway also presses the arrow buttons), 2 left and right only (side-scrollers), 3 up and down only. While the game is paused the d-pad always shows; Restart goes back to the d-pad. Keyboards and gamepads are unaffected. */
-declare function touch_set_mode(n: any): any;
+/** Which controls phones and tablets show. left: 0 d-pad (the default), 1 analog circle (touch anywhere in it: direction and distance from the middle go to stick(0), and pushing past halfway also presses the arrow buttons), 2 left and right only (side-scrollers), 3 up and down only. right: 0 the O and X buttons (the default; leaving it out means 0), 1 an analog circle that feeds stick(1), the same as a gamepad's right stick, and presses no buttons, with a small O button (btn(4)) beside it and no X: touch_set_mode(1, 1) for a twin-stick shooter. 2 a touchpad with the same small O: sliding a finger on it moves mouse_delta() (in any mouse mode; a swipe across the pad counts as 256 pixels, the screen's width), so mouse-look code works on a phone: touch_set_mode(1, 2) for a first-person game. Like a laptop's touchpad, a quick tap is a click of the left mouse button (btnp(19)), and a tap followed straight away by a touch that stays down holds btn(19) while the finger keeps sliding, so a game can fire while aiming with if (btn(19)) shoot(). While the game is paused the d-pad and the O and X buttons always show; Restart goes back to them. Keyboards and gamepads are unaffected. */
+declare function touch_set_mode(left: any, right: any): any;
 /** Seconds since the game started. */
 declare function time(): any;
 /** Seconds since the game started. */

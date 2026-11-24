@@ -1,5 +1,5 @@
 name blip
 speed 1 loop 0 0
-# pitch wave volume effect: a tiny voice blip as a Starry's words appear
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 47 0 2 0
 50 0 1 5

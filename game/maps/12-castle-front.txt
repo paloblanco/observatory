@@ -1,21 +1,19 @@
 # map 12 "castle front": 15 x 13 x 15 blocks (the size is in cart.json)
 # layers from the bottom (y0) up, each 15 rows from back (z0) to front, x0 left to right
 # "." is empty; a layer that isn't here is empty. The legend gives each character's tile.
-# The castle's front (south) half: the near walls, the gate, the courtyard maze in front, and the
-# flying stair up to the keep. The keep (map 19) and the back half (map 18) are separate, so each fades on its own.
 legend
 m 5 marble
-B 6 brick
+b 6 brick
 h 23 hedge
 y0
-BBBBBBBBBBBBBBB
-BBBBBBBBBBBBBBB
-BB...........BB
-BB.BBBhB.BBh.BB
-BB.h.......B.BB
-BB.B.........BB
-..h........B.BB
-...........B.BB
+bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb
+bb...........bb
+bb.bbbhb.bbh.bb
+bb.h.......b.bb
+bb.b.........bb
+..h........b.bb
+...........b.bb
 ...............
 ...............
 ...............
@@ -24,14 +22,14 @@ BB.B.........BB
 ...............
 ...............
 y1
-BBBBBBBBBBBBBBB
-BBBBBBBBBBBBBBB
-BB...........BB
-BB.BBBhB.BBh.BB
-BB.h.......B.BB
-BB.B.........BB
-..h........B.BB
-...........B.BB
+bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb
+bb...........bb
+bb.bbbhb.bbh.bb
+bb.h.......b.bb
+bb.b.........bb
+..h........b.bb
+...........b.bb
 ...............
 ...............
 ...............
@@ -40,14 +38,14 @@ BB.B.........BB
 ...............
 ...............
 y2
-BBBBBBBBBBBBBBB
-BBBBBBBBBBBBBBB
-BB...........BB
-BB...........BB
-BB...........BB
-BB...........BB
-.............BB
-.............BB
+bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb
+bb...........bb
+bb...........bb
+bb...........bb
+bb...........bb
+.............bb
+.............bb
 ...............
 ...............
 ...............
@@ -56,14 +54,14 @@ BB...........BB
 ...............
 ...............
 y3
-BBBBBBBBBBBBBBB
-BBBBBBBBBBBBBBB
-BB...........BB
-BB...........BB
-BB...........BB
-BB...........BB
-.............BB
-.............BB
+bbbbbbbbbbbbbbb
+bbbbbbbbbbbbbbb
+bb...........bb
+bb...........bb
+bb...........bb
+bb...........bb
+.............bb
+.............bb
 ...............
 ...............
 ...............
@@ -72,13 +70,13 @@ BB...........BB
 ...............
 ...............
 y4
-B.B.B.B.B.B.B.B
+b.b.b.b.b.b.b.b
 ...............
-B.............B
+b.............b
 ...............
-B.............B
+b.............b
 ...............
-..............B
+..............b
 ............m..
 ...............
 ...............

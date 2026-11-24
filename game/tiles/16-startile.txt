@@ -1,12 +1,12 @@
 name startile
 top
 1s1s1s1s
+sas1s1a1
+1sas1a1s
+s1aaaas1
+1aaaaaas
 s1saa1s1
 1s1aas1s
-saaaaaa1
-1saaaa1s
-s1a1sas1
-1a1s1sas
 s1s1s1s1
 side
 aaaaaaaa

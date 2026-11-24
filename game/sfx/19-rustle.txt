@@ -1,6 +1,6 @@
 name rustle
 speed 2 loop 0 0
-# pitch wave volume effect: a soft leafy rustle (flowers)
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 40 6 1 0
 44 6 2 0
 38 6 1 5

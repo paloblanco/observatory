@@ -1,7 +1,5 @@
 name starry
 pivot 4 4 4
-# a Starry: the game's star with a face (eyes, rosy cheeks, a little smile on the front, z 5).
-# Color 10 (the gold) is recolored per Starry in the game.
 # 8 layers from the bottom (y0) up; each is 8 rows from back (z0) to front (z7), x0-x7 left to right
 y0
 ........

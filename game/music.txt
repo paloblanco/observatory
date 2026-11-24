@@ -1,5 +1,4 @@
 # pattern: up to 4 sound numbers (- for none), then any of: start back stop
-# The song: intro, A A', B B', bridge, bells, A A' with a second voice, B, outro (about 58 s), then again.
 0: - 30 33 - start
 1: 8 26 33 -
 2: 9 26 33 -

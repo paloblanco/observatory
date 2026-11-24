@@ -1,6 +1,6 @@
 name thud
 speed 3 loop 0 0
-# pitch wave volume effect: a heavy landing (a low thump, then dust)
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 9 6 7 3
 5 0 7 3
 3 6 5 5

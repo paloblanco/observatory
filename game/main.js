@@ -43,7 +43,12 @@ const CURVE = 0.012                  // how fast the world rolls away ahead (0 =
 const BACK = 60                      // frames the camera takes to ease back when Lumi walks (60 = one second)
 // The heroes to choose from: a name and the first of their 3 vox models (standing, left step,
 // right step, in that order). Add a hero by adding 3 models in a row and a line here.
-const HEROES = [{ name: 'Lumi', vox: 0 }, { name: 'Lumo', vox: 8 }]
+const HEROES = [
+  { name: 'Lumi', vox: 0 }, 
+  { name: 'Lumo', vox: 8 }, 
+  { name: 'Rosy', vox: 16 },
+  { name: 'Yoyo', vox: 19 }
+]
 const WELL_NEED = 70                 // stars in the Star Well that bring the final stair
 const FINAL_TIME = 60                // frames the final stair takes to appear (time stands still meanwhile)
 const FINAL_SIZE = [26, 38, 37]      // the final stair map's size, to pick sparkle spots on it
@@ -88,7 +93,7 @@ const STARRY_LINES = [
   "The sky tower is very tall, but every step is small. You can do it!",
   "Shh! This is the star library. Every book here is about a different star.",
   "The big mushrooms make a staircase. Walk right up them!",
-  "Press X to spin! Chests pop open, rocks go flying, and flowers twirl.",
+  "Hi there! I'm Hazel. I'm in charge of the baby work!",
   // 9-14: the dancers in the secret room, behind the key door
   "You found the secret room! Only the bravest star-keepers ever see us dance.",
   "Five keys, five little locks... and one big secret. Nicely done!",
@@ -96,6 +101,8 @@ const STARRY_LINES = [
   "Did you know? Starries are made of the light left over when a star blinks.",
   "Spin with us! Spinning is the best way to say hello.",
   "When the Star Well is full, come back and tell us all about it!",
+  // 15 - an extra at the top of the safety platform from undercroft
+  "Yikes! That's a bit of a jump!",
 ]
 const DANCERS = 9                    // Starries whose line is DANCERS or more dance: they bounce high, all the time
 const STARRY_COLORS = [10, 14, 12, 11, 9, 13]   // each Starry's color, by its line number

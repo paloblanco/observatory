@@ -1,6 +1,6 @@
 name rock break
 speed 3 loop 0 0
-# pitch wave volume effect: a stony crunch
+# pitch wave volume effect (pitch 33 = A 440 Hz)
 24 6 6 3
 18 6 5 3
 14 6 4 5

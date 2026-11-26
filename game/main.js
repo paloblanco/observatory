@@ -110,6 +110,8 @@ const TALK_NEAR = 1.5, TALK_FAR = 3  // a Starry starts talking within TALK_NEAR
 const SKID = 18                      // frames a skid to a stop lasts (cosmetic: a lean forward and a puff of dust)
 const SKID_LEAN = 0.06               // how far she tips back when she skids (turns; more when running)
 const SKID_TURN = 0.083              // and how far she turns to her left (turns: 0.083 is 30 degrees)
+const WATER_FRAMES = [8, 24, 25], WATER_TIME = 0.4  // water (tile 8) shows these tiles in turn, this many seconds each
+const LAMP_GLOW = 31                 // the lamps' glow is drawn in this color, which only they use: pal() flickers it
 const NO_CLIMB = [17, 13]            // tiles Lumi never steps up onto: metal (rails, lamp posts) and lamps
 const FADE = 0.7, ROOF_FADE = 1      // how see-through a prop gets when it hides Lumi; the library roof and wall vanish
 
@@ -911,6 +913,14 @@ function drawSelect() {
   if (time() % 1 < 0.6) printc('Press X to begin', 232, 12, 1)
 }
 
+// A lamp's flame color for now: mostly yellow, now and then brighter or dipping to orange. Each prop
+// passes its own seed, so its lamps flicker out of step with the others.
+function flicker(seed) {
+  let t = time() + seed * 7.31
+  let n = sin(t * 0.31) * 0.5 + sin(t * 0.73 + 0.2) * 0.3 + sin(t * 1.9 + 0.5) * 0.2
+  return n > 0.6 ? 23 : n < -0.62 ? 9 : 10
+}
+
 function fmt(s) { return flr(s / 60) + ':' + ('0' + flr(s % 60)).slice(-2) }
 
 function _draw() {
@@ -936,7 +946,10 @@ function _draw() {
   }
 
   outline(0)
+  tile_sub(8, WATER_FRAMES[flr(time() / WATER_TIME) % WATER_FRAMES.length])   // the water drifts
+  let lamp = (seed) => { if (flash == 0) pal(LAMP_GLOW, flicker(seed)) }       // set before each map draw
   if (flash > 0) for (let i = 0; i < 32; i++) pal(i, 7)
+  lamp(0)
   if (mFade > 0.02) fillp(mFade, -1)
   map(M)
   fillp()
@@ -947,6 +960,7 @@ function _draw() {
     if (p.fade > 0.98 || !boxInView(p.box)) continue      // faded out completely, or off screen
     if (p.final && finalState == 'appearing') fillp(appear, -1)
     else if (p.fade > 0.02) fillp(p.fade, -1)
+    lamp(p.m)
     map(p.m, p.fade > 0.02)          // while see-through, the backs too, so a prop the camera is inside still shows
     fillp()
   }
@@ -954,6 +968,7 @@ function _draw() {
     if (d.state == 'open' || (d.final && finalState == 'hidden')) continue
     if (d.state == 'opening') fillp(min(1, d.t / DOOR_TIME), -1)
     else if (d.final && finalState == 'appearing') fillp(appear, -1)
+    lamp(d.m)
     if (d.cover != null && boxInView(d.coverBox)) map(d.cover, true)   // the cover fades with the door, but never for sightlines
     if (title) d.fade = 0
     else if (d.state == 'shut' && d.fade > 0.02) fillp(d.fade, -1)
